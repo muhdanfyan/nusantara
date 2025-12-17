@@ -33,6 +33,7 @@ import {
   ClearRefinements,
   connectStateResults
 } from "react-instantsearch-dom";
+import { useDebouncedCallback } from "../utils/useDebouncedCallback.jsx";
 
 import aa from "search-insights";
 import { useLocation } from 'react-router-dom';
@@ -53,7 +54,7 @@ import {
 
 const searchClient = algoliasearch(
   "JNSS5CFDZZ",
-  "db08e40265e2941b9a7d8f644b6e5240"
+  "c8f882473ff42d41158430be09ec2b4e"
 );
 //const searchClient = algoliasearch("L55H18ZINA", "a19be455e7e75ee8f20a93d26b9fc6d6")
 
@@ -79,6 +80,7 @@ const AppGrid = (props) => {
   const [formMail, setFormMail] = React.useState("");
   const [message, setMessage] = React.useState("");
   const [formMessage, setFormMessage] = React.useState("");
+  const [deactivatedIndexes, setDeactivatedIndexes] = React.useState([]);
 
   const buttonStyle = {
     borderRadius: 30,
@@ -115,7 +117,7 @@ const AppGrid = (props) => {
     })
       .then((response) => response.json())
       .then((response) => {
-        if (response.success === true) {
+        if (response?.success === true) {
           setFormMessage(response.reason);
           //toast("Thanks for submitting!")
         } else {
@@ -158,6 +160,8 @@ const AppGrid = (props) => {
     const handleSearch = () => {
       refine(searchQuery.trim());
     };
+
+    const debouncedRefine = useDebouncedCallback((value) => refine(value), 300);
 
     return (
       <form noValidate action="" role="search">
@@ -228,10 +232,16 @@ const AppGrid = (props) => {
           placeholder="Search more than 2500 Apps"
           id="shuffle_search_field"
           onChange={(event) => {
-            setSearchQuery(event.currentTarget.value);
+            const value = event.currentTarget.value;
+            setSearchQuery(value);
             removeQuery("q");
-            refine(event.currentTarget.value);
+            debouncedRefine(value);
           }}
+          onKeyDown={(event) => {
+						if(event.key === "Enter") {
+							event.preventDefault();
+						}
+					}}
           limit={5}
         />
         {/*isSearchStalled ? 'My search is stalled' : ''*/}
@@ -293,7 +303,7 @@ const AppGrid = (props) => {
 
     useEffect(() => {
       var baseurl = globalUrl;
-      fetch(baseurl + "/api/v1/getinfo", {
+      fetch(baseurl + "/api/v1/me", {
         credentials: "include",
         headers: {
           'Content-Type': 'application/json',
@@ -301,7 +311,7 @@ const AppGrid = (props) => {
       })
         .then(response => response.json())
         .then(responseJson => {
-          if (responseJson.success) {
+          if (responseJson?.success) {
             setUserdata(responseJson);
             setAllActivatedAppIds(responseJson.active_apps)
             setIsLoggedIn(true);
@@ -344,10 +354,10 @@ const AppGrid = (props) => {
       })
         .then((response) => response.json())
         .then((responseJson) => {
-          if (responseJson.success === false) {
+          if (responseJson?.success === false) {
             toast.error(responseJson.reason);
           } else {
-            toast.success(`App ${type}d Successfully!`);
+            //toast.success(`App ${type}d Successfully!`);
             if (type === 'activate') {
               setAllActivatedAppIds(prev => [...prev, data.objectID]);
               setIsAnyAppActivated(true);
@@ -390,7 +400,7 @@ const AppGrid = (props) => {
         {!isLoading ? (
           <div>
             {hits.length === 0 && searchQuery.length >= 0 && showNoAppFound ? (
-              <Typography variant="body1" style={{ marginTop: '30%' }}>No App Found</Typography>
+              <Typography variant="body1" style={{ marginTop: '30%' }}>No Apps Found</Typography>
             ) : (
               <Grid item spacing={2} justifyContent="flex-start">
                 <div
@@ -408,11 +418,15 @@ const AppGrid = (props) => {
                     scrollbarColor: "#494949 #2f2f2f",
                   }}
                 >
-                  {hits.map((data, index) => {
+                  {hits?.map((data, index) => {
                     const appUrl =
-                      isCloud
-                        ? `/apps/${data.objectID}?queryID=${data.__queryID}`
-                        : `https://shuffler.io/apps/${data.objectID}?queryID=${data.__queryID}`;
+                              isCloud === true ?
+                              `/apps/${data.objectID}`
+                                : `apps/${data.objectID}`;
+
+                              if (data.name === "" && data.id === "") {
+                                return null
+                              }
 
                     return (
                       <Zoom
@@ -458,8 +472,17 @@ const AppGrid = (props) => {
                                 }}
                               >
                                 <img
+								  id={`image_${index}`}
                                   alt={data.name}
                                   src={data.image_url ? data.image_url : "/images/no_image.png"}
+								  onError={(e) => {
+									  // Replace the image with the default image
+									  const foundImage = document.getElementById(`image_${index}`)
+									  if (foundImage !== undefined && foundImage !== null) {
+										  foundImage.src = theme.palette.defaultImage
+										  data.image_url = theme.palette.defaultImage
+									  }
+								  }}
                                   style={{
                                     width: 80,
                                     height: 80,
@@ -537,7 +560,7 @@ const AppGrid = (props) => {
                                               }}
                                             >
                                               <span>
-                                                {data.tags.slice(0, 1).map((tag, tagIndex) => (
+                                                {data?.tags?.slice(0, 1)?.map((tag, tagIndex) => (
                                                   <span key={tagIndex}>
                                                     {normalizedString(tag)}
                                                     {tagIndex < 1 ? ", " : ""}
@@ -550,7 +573,7 @@ const AppGrid = (props) => {
                                       ) : (
                                         <div style={{ width: 230, textOverflow: "ellipsis", overflow: 'hidden', whiteSpace: 'nowrap', }}>
                                           {data.tags &&
-                                            data.tags.map((tag, tagIndex) => (
+                                            data?.tags?.map((tag, tagIndex) => (
                                               <span key={tagIndex}>
                                                 {normalizedString(tag)}
                                                 {tagIndex < data.tags.length - 1 ? ", " : ""}
@@ -741,7 +764,7 @@ const AppGrid = (props) => {
     };
 
     const transformRefinementListItems = items =>
-      items.map(item => ({
+      items?.map(item => ({
         ...item,
         label: item.label === 'true' ? 'App Editor' : 'Python',
       }));
@@ -989,11 +1012,16 @@ const AppGrid = (props) => {
           }}
           autoComplete="off"
           color="primary"
-          placeholder="Search your Activated or Self-built apps"
+          placeholder="Search your Activated or self-built apps"
           id="shuffle_search_field"
           onChange={(event) => {
             setSearchQuery(event.currentTarget.value);
           }}
+          onKeyDown={(event) => {
+						if(event.key === "Enter") {
+							event.preventDefault();
+						}
+					}}
           limit={5}
         />
         {/*isSearchStalled ? 'My search is stalled' : ''*/}
@@ -1079,7 +1107,7 @@ const AppGrid = (props) => {
           }
         });
 
-        const categoryArray = Object.keys(categoryCountMap).map((category) => ({
+        const categoryArray = Object.keys(categoryCountMap)?.map((category) => ({
           category,
           count: categoryCountMap[category],
         }));
@@ -1145,7 +1173,7 @@ const AppGrid = (props) => {
           {!isLoading && (
             <Collapse in={isCategoreListExpanded}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%' }}>
-                {topCategories.map((data, index) => (
+                {topCategories?.map((data, index) => (
                   <Button
                     key={data.category}
                     style={{
@@ -1223,7 +1251,7 @@ const AppGrid = (props) => {
         });
       }
 
-      const tagArray = Object.keys(tagCountMap).map((tag) => ({
+      const tagArray = Object.keys(tagCountMap)?.map((tag) => ({
         tag,
         count: tagCountMap[tag],
       }));
@@ -1284,7 +1312,7 @@ const AppGrid = (props) => {
         </Button>
         <Collapse in={isActionLabelExpanded}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%', }}>
-            {topTags && topTags.length > 0 && topTags.map((data, index) => (
+            {topTags && topTags.length > 0 && topTags?.map((data, index) => (
               <Button
                 key={index}
                 onClick={() => handleCheckboxChange(index)}
@@ -1395,7 +1423,7 @@ const AppGrid = (props) => {
 
         <Collapse in={isCreatedWithExpanded}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%' }}>
-            {AppCreatedWithOptions.map((data, index) => (
+            {AppCreatedWithOptions?.map((data, index) => (
               <Button
                 style={{
                   display: "inline-flex",
@@ -1541,9 +1569,13 @@ const AppGrid = (props) => {
             <Typography variant="h5" style={{ marginBottom: 30, marginTop: 30, fontWeight: "400", fontSize: 24 }}>
               Filter By
             </Typography>
+
             <FilterUsersAndOrgsAppByCategory selectedCategoryForUsersAndOgsApps={selectedCategoryForUsersAndOgsApps} setselectedCategoryForUsersAndOgsApps={setselectedCategoryForUsersAndOgsApps} />
+
             <FilterUsersAndOrgsAppByActionLabel selectedTagsForUserAndOrgApps={selectedTagsForUserAndOrgApps} setSelectedTagsForUserAndOrgApps={setSelectedTagsForUserAndOrgApps} />
+
             <FilterUsersAndOrgsAppByCreatedWith selectedOptionOfCreatedWith={selectedOptionOfCreatedWith} setSelectedOptionOfCreatedWith={setSelectedOptionOfCreatedWith} />
+
             <FilterUsersAndOrgsAppCreatedBy />
           </div>
         )}
@@ -1661,7 +1693,7 @@ const AppGrid = (props) => {
                             maxHeight: 570,
                           }}
                         >
-                          {filteredUserAppdata.map((data, index) => {
+                          {filteredUserAppdata?.map((data, index) => {
                             const isMouseOverOnCloudIcon = false;
                             const xs = 12;
                             const rowHandler = 12;
@@ -1708,9 +1740,13 @@ const AppGrid = (props) => {
                             };
 
                             const appUrl =
-                              isCloud === true
-                                ? `/apps/${data.id}`
+                              isCloud === true ?
+                               `/apps/${data.id}`
                                 : `https://shuffler.io/apps/${data.id}`;
+
+                              if (data.name === "" && data.id === "") {
+                                return null
+                              }
 
                             return (
                               <Zoom
@@ -1808,17 +1844,71 @@ const AppGrid = (props) => {
                                               width: 230,
                                               textAlign: 'start',
                                               marginLeft: 8,
-                                              color: "rgba(158, 158, 158, 1)"
+                                              color: "rgba(158, 158, 158, 1)",
+											  display: "flex", 
                                             }}
                                           >
-                                            {data.tags &&
-                                              data.tags.map((tag, tagIndex) => (
-                                                <span key={tagIndex}>
-                                                  {normalizedString(tag)}
-                                                  {tagIndex < data.tags.length - 1 ? ", " : ""}
-                                                </span>
-                                              ))}
-                                          </div>
+											<div style={{minWidth: 120, overflow: "hidden", }}>
+												{data.generated !== true ?
+													<div>
+													{data?.tags &&
+													  data?.tags?.slice(0,2)?.map((tag, tagIndex) => (
+														<span key={tagIndex}>
+														  {normalizedString(tag)}
+														  {tagIndex < data.tags.length - 1 ? ", " : ""}
+														</span>
+													  ))
+													}
+													</div>
+												: null}
+											</div>
+                                            {currTab === 1 &&  !deactivatedIndexes.includes(index) && mouseHoverIndex === index && data.generated === true ? 
+												<Button style={{
+													marginLeft: 15, 
+												  width: 102,
+												  height: 35,
+												  borderRadius: 200,
+												  backgroundColor: "rgba(73, 73, 73, 1)",
+												  color: "rgba(241, 241, 241, 1)",
+												  textTransform: "none",
+												}}
+												  onClick={(event) => {
+													//deactivatedIndexes.push(index)
+													//setDeactivatedIndexes(deactivatedIndexes)
+
+													event.preventDefault();
+													event.stopPropagation();
+													//handleActivateButton(event, data, "deactivate");
+													// FIXME: Put this in a function lol
+      												const url = `${globalUrl}/api/v1/apps/${data.id}/deactivate`;
+
+      												fetch(url, {
+      												  method: 'GET',
+      												  headers: {
+      												    'Content-Type': 'application/json',
+      												    'Accept': 'application/json',
+      												  },
+      												  credentials: "include",
+      												})
+      												  .then((response) => response.json())
+      												  .then((responseJson) => {
+      												    if (responseJson?.success === false) {
+      												      toast.error(responseJson.reason);
+      												    } else {
+															toast.success("App Deactivated Successfully. Reload UI to see updated changes.")
+      												        //const updatedIds = allActivatedAppIds.filter(id => id !== data.objectID);
+      												        //setAllActivatedAppIds(updatedIds);
+      												    }
+      												  })
+      												  .catch(error => {
+      												    console.log("app error: ", error.toString());
+      												  })
+												  }}>
+												  Deactivate
+												</Button>
+											: null}
+										  </div>
+
                                           {/* )} */}
                                         </div>
                                       </ButtonBase>
@@ -1936,6 +2026,7 @@ const AppGrid = (props) => {
                 selectedOptionOfCreatedWith={selectedOptionOfCreatedWith}
               />
             )}
+
             <AppTab
               selectedCategoryForUsersAndOgsApps={selectedCategoryForUsersAndOgsApps}
               selectedTagsForUserAndOrgApps={selectedTagsForUserAndOrgApps}
@@ -1944,6 +2035,7 @@ const AppGrid = (props) => {
               setSelectedTagsForUserAndOrgApps={setSelectedTagsForUserAndOrgApps}
               setSelectedOptionOfCreatedWith={setSelectedOptionOfCreatedWith}
             />
+
           </div>
           <Configure clickAnalytics />
         </InstantSearch>

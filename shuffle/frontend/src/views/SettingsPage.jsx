@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 
 import { useNavigate } from "react-router-dom";
-import theme from '../theme.jsx';
+import {getTheme} from '../theme.jsx';
 import {
   Grid,
   Typography,
@@ -10,15 +10,20 @@ import {
   Divider,
   TextField,
   Modal,
+  Switch,
 } from "@mui/material";
 //import { useAlert
 import { ToastContainer, toast } from "react-toastify";
 import "../codeeditor-index.css";
+import { Context } from "../context/ContextApi.jsx";
 
 import { FileCopy, Visibility, VisibilityOff } from "@mui/icons-material";
 import IconButton from "@mui/material/IconButton";
 import { Tooltip } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
+import { Box } from "@mui/system";
+import CircularProgress from "@mui/material/CircularProgress";
+
 
 const Settings = (props) => {
   const { globalUrl, isLoaded, userdata, setUserData } = props;
@@ -32,6 +37,13 @@ const Settings = (props) => {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newPassword2, setNewPassword2] = useState("");
+  const [selectedOrganization, setSelectedOrganization] = useState({});
+  const [MFARequired, setMFARequired] = React.useState(false);
+  const [image2FA, setImage2FA] = React.useState("");
+  const [value2FA, setValue2FA] = React.useState("");
+  const {themeMode, supportEmail} = useContext(Context);
+  const theme = getTheme(themeMode);
+
   // const [file, setFile] = React.useState("");
   // const [fileBase64, setFileBase64] = React.useState(
   //   userdata.image === undefined || userdata.image === null
@@ -74,7 +86,7 @@ const Settings = (props) => {
 
   const boxStyle = {
     flex: "1",
-    color: "white",
+    color: theme.palette.text.primary,
     position: "relative",
     marginLeft: "10px",
     marginRight: "10px",
@@ -86,6 +98,82 @@ const Settings = (props) => {
     display: "flex",
     flexDirection: "column",
   };
+
+  useEffect(() => {
+    if (userdata.active_org === undefined || userdata.active_org === null || userdata.active_org.id === undefined || userdata.active_org.id === null) {
+      return;
+    }
+
+    fetch(`${globalUrl}/api/v1/orgs/${userdata.active_org.id}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      credentials: "include",
+    })
+      .then((response) => {
+        console.log("Received response:", response);
+        if (response.status !== 200) {
+          console.error("Status not 200:", response.status);
+          throw new Error(`Status not 200: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((responseJson) => {
+        setSelectedOrganization(responseJson);
+        setMFARequired(responseJson.mfa_required);
+      })
+      .catch((error) => {
+        console.error("Error fetching organization:", error);
+      });
+  }, [userdata]);
+
+  const UpdateMFAInUserOrg = (org_id) => {
+
+    if (MFARequired === false) {
+      toast("Making MFA required for your organization. Please wait...");
+    } else {
+      toast("Making MFA optional for your organization. Please wait...");
+    }
+
+    const data = {
+      mfa_required: !selectedOrganization.mfa_required,
+      org_id: selectedOrganization.id,
+    }
+
+    const url = globalUrl + `/api/v1/orgs/${selectedOrganization.id}`;
+    fetch(url, {
+      mode: "cors",
+      method: "POST",
+      body: JSON.stringify(data),
+      credentials: "include",
+      crossDomain: true,
+      withCredentials: true,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+      },
+    })
+      .then((response) =>
+        response.json().then((responseJson) => {
+          console.log(responseJson)
+          if (responseJson["success"] === false) {
+            toast.error("Failed updating org: ", responseJson.reason);
+          } else {
+            if (MFARequired === false) {
+              setMFARequired(true)
+              toast.success("Successfully make MFA required for your organization!");
+            } else {
+              setMFARequired(false)
+              toast.success("Successfully make MFA optional for your organization!")
+            }
+          }
+        }),
+      )
+      .catch((error) => {
+        toast("Err: " + error.toString());
+      });
+  }
 
   const checkOwner = (data, userdata) => {
     var currentOwner = false;
@@ -128,8 +216,8 @@ const Settings = (props) => {
       left: "50%",
       transform: "translate(-50%, -50%)",
       zIndex: "9999",
-      backgroundColor: "#1a1a1a",
-      color: "white",
+      backgroundColor: theme.palette.backgroundColor,
+      color: theme.palette.text.primary,
       padding: 20,
       borderRadius: 5,
       boxShadow: "0 0 10px rgba(0, 0, 0, 0.3)",
@@ -138,7 +226,7 @@ const Settings = (props) => {
     };
 
     const closeIconButtonStyling = {
-      color: "white",
+      color: theme.palette.text.primary,
       border: "none",
       backgroundColor: "transparent",
       marginLeft: "90%",
@@ -158,7 +246,7 @@ const Settings = (props) => {
       width: "100%",
       fontSize: 16,
       backgroundColor: disabled ? "gray" : "red",
-      color: "white",
+      color: theme.palette.text.primary,
       cursor: disabled === false && "pointer",
     };
     const checkboxStyle = {
@@ -296,7 +384,7 @@ const Settings = (props) => {
               className="ais-RefinementList-checkbox"
               onClick={handleCheckBoxEvent}
             />
-            <label style={{ fontSize: "16px", color: "white" }}>
+            <label style={{ fontSize: "16px", color: theme.palette.text.primary }}>
               I have read the above information and I agree to it completely
             </label>
           </div>
@@ -325,7 +413,7 @@ const Settings = (props) => {
                   endAdornment: (
                     <IconButton
                       onClick={handlePasswordVisibility}
-                      style={{color:"white"}}
+                      style={{color:theme.palette.text.primary}}
                     >
                       {showPassword ? <VisibilityOff /> : <Visibility />}
                     </IconButton>
@@ -370,7 +458,12 @@ const Settings = (props) => {
           if (responseJson["success"] === false) {
             setPasswordFormMessage(responseJson["reason"]);
           } else {
-            toast("Changed password!");
+			var reason = ""
+			if (responseJson.reason !== undefined && responseJson.reason !== null && responseJson.reason.length > 0) {
+				reason += responseJson.reason
+			}
+
+            toast.success("Changed password! " + reason);
             setPasswordFormMessage("");
           }
         })
@@ -442,6 +535,8 @@ const Settings = (props) => {
   };
 
   const generateApikey = () => {
+	toast.info("Generating new API key. This may take a bit.");
+
     fetch(globalUrl + "/api/v1/generateapikey", {
       method: "GET",
       headers: {
@@ -453,7 +548,7 @@ const Settings = (props) => {
       .then((response) => {
         if (response.status !== 200) {
           console.log("Status not 200 for WORKFLOW EXECUTION :O!");
-        }
+		}
 
         return response.json();
       })
@@ -542,7 +637,7 @@ const Settings = (props) => {
       display: "flex",
       flexDirection: "column",
       padding: "0px 0px 12px 0px",
-      borderRadius: theme.palette.borderRadius,
+      borderRadius: theme.palette?.borderRadius,
     };
 
     const currentOwner = checkOwner(data, userdata);
@@ -551,7 +646,7 @@ const Settings = (props) => {
     }
 
     return (
-      <Grid item xs={4} style={{ borderRadius: theme.palette.borderRadius }}>
+      <Grid item xs={4} style={{ borderRadius: theme.palette?.borderRadius }}>
         <Paper style={innerPaperStyle}>
           <img
             src={data.image}
@@ -607,7 +702,7 @@ const Settings = (props) => {
   );
 
   const landingpageData = (
-    <div style={{ display: "flex", marginTop: 120 }}>
+    <div style={{ display: "flex", paddingTop: 120 }}>
       <Paper style={boxStyle}>
         {imageInfo}
         <h2>Settings</h2>
@@ -617,7 +712,7 @@ const Settings = (props) => {
             InputProps={{
               style: {
                 height: "50px",
-                color: "white",
+                color: theme.palette.text.primary,
               },
             }}
             color="primary"
@@ -634,6 +729,7 @@ const Settings = (props) => {
             //onChange={e => setUsername(e.target.value)}
           />
         </div>
+	    {/*
         <div style={{ flex: "1", display: "flex", flexDirection: "row" }}>
           <TextField
             style={{
@@ -644,7 +740,7 @@ const Settings = (props) => {
             InputProps={{
               style: {
                 height: "50px",
-                color: "white",
+                color: theme.palette.text.primary,
               },
             }}
             color="primary"
@@ -669,7 +765,7 @@ const Settings = (props) => {
             InputProps={{
               style: {
                 height: "50px",
-                color: "white",
+                color: theme.palette.text.primary,
               },
             }}
             color="primary"
@@ -686,6 +782,7 @@ const Settings = (props) => {
             onChange={(e) => setLastname(e.target.value)}
           />
         </div>
+		*/}
         <h2>APIKEY</h2>
         <a
           target="_blank"
@@ -699,7 +796,7 @@ const Settings = (props) => {
           InputProps={{
             style: {
               height: "50px",
-              color: "white",
+              color: theme.palette.text.primary,
             },
           }}
           color="primary"
@@ -717,7 +814,7 @@ const Settings = (props) => {
         InputProps={{
           style: {
             height: "50px",
-            color: "white",
+            color: theme.palette.text.primary,
           },
           endAdornment: (
             <>
@@ -749,7 +846,12 @@ const Settings = (props) => {
         variant="outlined"
       />
         <Button
-          style={{ width: "100%", height: "40px", marginTop: "10px" }}
+          style={{ 
+			width: "100%", 
+			height: "40px", 
+			marginTop: "10px",
+			textTransform: "none",
+		  }}
           variant="outlined"
           color="primary"
           onClick={() => generateApikey()}
@@ -763,7 +865,7 @@ const Settings = (props) => {
 							InputProps={{
 								style:{
 									height: "50px", 
-									color: "white",
+									color: theme.palette.text.primary,
 								},
 							}}
 							color="primary"
@@ -783,7 +885,7 @@ const Settings = (props) => {
 							InputProps={{
 								style:{
 									height: "50px", 
-									color: "white",
+									color: theme.palette.text.primary,
 								},
 							}}
 							color="primary"
@@ -805,7 +907,7 @@ const Settings = (props) => {
 							InputProps={{
 								style:{
 									height: "50px", 
-									color: "white",
+									color: theme.palette.text.primary,
 								},
 							}}
 							color="primary"
@@ -825,7 +927,7 @@ const Settings = (props) => {
 							InputProps={{
 								style:{
 									height: "50px", 
-									color: "white",
+									color: theme.palette.text.primary,
 								},
 							}}
 							color="primary"
@@ -860,7 +962,7 @@ const Settings = (props) => {
             InputProps={{
               style: {
                 height: "50px",
-                color: "white",
+                color: theme.palette.text.primary,
               },
             }}
             color="primary"
@@ -885,7 +987,7 @@ const Settings = (props) => {
             InputProps={{
               style: {
                 height: "50px",
-                color: "white",
+                color: theme.palette.text.primary,
               },
             }}
             color="primary"
@@ -908,7 +1010,7 @@ const Settings = (props) => {
             InputProps={{
               style: {
                 height: "50px",
-                color: "white",
+                color: theme.palette.text.primary,
               },
             }}
             color="primary"
@@ -938,8 +1040,7 @@ const Settings = (props) => {
         >
           Submit password change
         </Button>
-        <h3>{passwordFormMessage}</h3> 
-
+        <h3>{passwordFormMessage}</h3>
 
         {isCloud && (
           <>
@@ -953,7 +1054,7 @@ const Settings = (props) => {
 			{isCloud ?
 					<span>
 						<Typography variant="body1" color="textSecondary">
-							By <a href="/creators" target="_blank" style={{ textDecoration: "none", color: "#f86a3e"}}>joining the Creator Incentive Program</a> and connecting your Github account, you agree to our <a href="/docs/terms_of_service" target="_blank" style={{ textDecoration: "none", color: "#f86a3e"}}>Terms of Service</a>, and acknowledge that your non-sensitive data will be turned into a <a target="_blank" style={{ textDecoration: "none", color: "#f86a3e"}} href="https://shuffler.io/creators">creator account</a>. This enables you to earn a passive income from Shuffle. This IS reversible. Support: support@shuffler.io
+							By <a href="/creators" target="_blank" style={{ textDecoration: "none", color: "#f86a3e"}}>joining the Creator Incentive Program</a> and connecting your Github account, you agree to our <a href="/docs/terms_of_service" target="_blank" style={{ textDecoration: "none", color: "#f86a3e"}}>Terms of Service</a>, and acknowledge that your non-sensitive data will be turned into a <a target="_blank" style={{ textDecoration: "none", color: "#f86a3e"}} href="https://shuffler.io/creators">creator account</a>. This enables you to earn a passive income from Shuffle. This IS reversible. Support: {supportEmail}
 						</Typography>
 						<Button
 							style={{ height: 40, marginTop: 10 }}
@@ -981,7 +1082,7 @@ const Settings = (props) => {
                   <Paper
                     square
                     style={{
-                      borderRadius: theme.palette.borderRadius,
+                      borderRadius: theme.palette?.borderRadius,
                       padding: 50,
                       backgroundColor: theme.palette.inputColor,
                     }}
@@ -1016,7 +1117,7 @@ const Settings = (props) => {
               <Paper
                 square
                 style={{
-                  borderRadius: theme.palette.borderRadius,
+                  borderRadius: theme.palette?.borderRadius,
                   padding: 50,
                   backgroundColor: theme.palette.inputColor,
                 }}
@@ -1040,7 +1141,7 @@ const Settings = (props) => {
             height: "60px",
             marginTop: "10px",
             backgroundColor: "#d52b2b",
-            color: "white",
+            color: theme.palette.text.primary,
           }}
           // variant="contained"
           // color="primary"

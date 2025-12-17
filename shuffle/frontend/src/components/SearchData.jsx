@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 
-import theme from '../theme.jsx';
+import {getTheme} from '../theme.jsx';
 import { useNavigate, Link, useParams } from "react-router-dom";
 import { toast } from "react-toastify" 
 
@@ -33,6 +33,8 @@ import {
     AvatarGroup,
 } from "@mui/material"
 
+import { Context } from '../context/ContextApi.jsx';
+
 import { Search as SearchIcon, Close as CloseIcon, Folder as FolderIcon, Code as CodeIcon, LibraryBooks as LibraryBooksIcon } from '@mui/icons-material'
 
 import algoliasearch from 'algoliasearch/lite';
@@ -45,19 +47,23 @@ const chipStyle = {
     backgroundColor: "#3d3f43", height: 30, marginRight: 5, paddingLeft: 5, paddingRight: 5, height: 28, cursor: "pointer", borderColor: "#3d3f43", color: "white",
 }
 
-const searchClient = algoliasearch("JNSS5CFDZZ", "db08e40265e2941b9a7d8f644b6e5240")
+const searchClient = algoliasearch("JNSS5CFDZZ", "c8f882473ff42d41158430be09ec2b4e")
 const SearchData = props => {
-    const { serverside, globalUrl, userdata, setModalOpen, modalOpen } = props
+    const { serverside, globalUrl, userdata } = props
     let navigate = useNavigate();
+    const { searchBarModalOpen, setSearchBarModalOpen, isDocSearchModalOpen } = useContext(Context);
     const borderRadius = 3
     const node = useRef()
     const [searchOpen, setSearchOpen] = useState(false)
     const [oldPath, setOldPath] = useState("")
     const [value, setValue] = useState("");
+    const isDocSearchModal = isDocSearchModalOpen;
+    const {themeMode, supportEmail} = useContext(Context);
+    const theme = getTheme(themeMode)
 
     const handleLinkClick = () => {
-        if (modalOpen) {
-            setModalOpen(false); // Assuming setModalOpen is defined correctly
+        if (searchBarModalOpen) {
+            setSearchBarModalOpen(false); // Assuming setModalOpen is defined correctly
         } else {
             console.log("Condition not met, staying on the same page");
         }
@@ -71,7 +77,7 @@ const SearchData = props => {
     //    return null
     //}
 
-    const isCloud = window.location.host === "localhost:3002" || window.location.host === "shuffler.io";
+    const isCloud = (window.location.host === "localhost:3002" || window.location.host === "shuffler.io") ? true : (process.env.IS_SSR === "true");
     // if (window.location.pathname === "/docs" || window.location.pathname === "/apps" || window.location.pathname === "/usecases"  ) {
     //     setModalOpen(false)
     // }
@@ -87,15 +93,17 @@ const SearchData = props => {
         const [inputValue, setInputValue] = useState(currentRefinement);
 
         const textFieldRef = useRef(null);
+        const debounceTimeoutRef = useRef(null);
+
         const keyPressHandler = (e) => {
-            if (e.which === 13) {
+            if (e.key === "Enter") {
+                e.preventDefault();
                 // navigate(`/search?q=${currentRefinement}`, { state: value, replace: true });
                 // setModalOpen(false);
                 const trimmedValue = inputValue.trim();
                 if (trimmedValue !== '') {
-                    e.preventDefault();
                     navigate(`/search?q=${trimmedValue}`, { state: trimmedValue, replace: true });
-                    setModalOpen(false);
+                    setSearchBarModalOpen(false);
                 }
             }
         };
@@ -106,6 +114,27 @@ const SearchData = props => {
             }
         }, [searchOpen]);
 
+        useEffect(() => {
+            // Clear any existing timeout to prevent multiple executions
+            if (debounceTimeoutRef.current) {
+                clearTimeout(debounceTimeoutRef.current);
+            }
+
+            // Set a new timeout that will execute the search after a 200ms delay
+            debounceTimeoutRef.current = setTimeout(() => {
+                refine(inputValue);
+                setSearchOpen(inputValue.trim() !== '');
+            }, 200);
+
+            // Cleanup function that runs when component unmounts or when dependencies change
+            // This ensures we don't have any hanging timeouts
+            return () => {
+                if (debounceTimeoutRef.current) {
+                    clearTimeout(debounceTimeoutRef.current);
+                }
+            };
+        }, [inputValue, refine]); // Effect runs when inputValue or refine function changes
+
         return (
 
             <form id="search_form" noValidate type="searchbox" action="" role="search" onClick={() => {
@@ -113,14 +142,13 @@ const SearchData = props => {
             >
                 <TextField
                     fullWidth
-                    style={{ zIndex: 1100, marginTop: -20, marginBottom: 200, position: "fixed", backgroundColor: theme.palette.inputColor, borderRadius: borderRadius, width: 685, }}
+                    style={{ zIndex: 1100, marginTop: -20, marginBottom: 200, position: "fixed", backgroundColor: theme.palette.textFieldStyle.backgroundColor, borderRadius: borderRadius, width: 690, }}
                     InputProps={{
                         style: {
-                            color: "white",
+                            color: theme.palette.textFieldStyle.color,
                             fontSize: "1em",
                             height: 50,
                             margin: 0,
-                            fontSize: "0.9em",
                             paddingLeft: 10,
                         },
                         disableUnderline: true,
@@ -140,7 +168,7 @@ const SearchData = props => {
                     autoComplete='off'
                     type="search"
                     color="primary"
-                    placeholder="Find Public Apps, Workflows, Documentation..."
+                    placeholder={isDocSearchModal ? "Type to search documentation..." : "Find Public Apps, Workflows, Documentation..."}
                     value={inputValue}
                     id="shuffle_search_field"
                     onClick={(event) => {
@@ -154,12 +182,6 @@ const SearchData = props => {
                     onChange={(event) => {
                         const newValue = event.target.value;
                         setInputValue(newValue);
-                        refine(newValue);
-                        if (newValue.trim() !== '') {
-                            setSearchOpen(true);
-                        } else {
-                            setSearchOpen(false);
-                        }
                     }}
                     onKeyDown={keyPressHandler}
                     inputRef={textFieldRef}
@@ -196,12 +218,12 @@ const SearchData = props => {
         const baseImage = <CodeIcon />
 
         return (
-            <Card elevation={0} style={{ marginRight: 10, marginTop: 50, color: "white", zIndex: 1002, backgroundColor: theme.palette.inputColor, width: "100%", left: 75, boxShadows: "none", }}>
+            <Card elevation={0} style={{ marginRight: 10, marginTop: 50, color: theme.palette.text.primary, zIndex: 1002, backgroundColor: theme.palette.textFieldStyle.backgroundColor, width: "100%", left: 75, boxShadows: "none", }}>
                 <Typography variant="h6" style={{ margin: "10px 10px 0px 20px", color: "#FF8444", borderBottom: "1px solid", width: 105 }}>
                     Workflows
                 </Typography>
 
-                <List style={{ backgroundColor: theme.palette.inputColor, }}>
+                <List style={{ backgroundColor: themeMode === "dark" ? "#2A2A2A" : "#F5F5F5", }}>
                     {hits.length === 0 ?
                         <ListItem style={outerlistitemStyle}>
                             <ListItemAvatar onClick={() => console.log(hits)}>
@@ -221,7 +243,7 @@ const SearchData = props => {
                                 overflowX: "hidden",
                                 overflowY: "hidden",
                                 borderBottom: "1px solid rgba(255,255,255,0.4)",
-                                backgroundColor: mouseHoverIndex === index ? "#1f2023" : "inherit",
+                                backgroundColor: mouseHoverIndex === index ? theme.palette.hoverColor : "inherit",
                                 cursor: "pointer",
                                 marginLeft: 5,
                                 marginRight: 5,
@@ -249,7 +271,7 @@ const SearchData = props => {
                                 <Link key={hit.objectID} to={parsedUrl} rel="noopener noreferrer" style={{ textDecoration: "none", color: "white", }} onClick={(event) => {
                                     //console.log("CLICK")
                                     setSearchOpen(true)
-                                    setModalOpen(false)
+                                    setSearchBarModalOpen(false)
                                     aa('init', {
                                         appId: searchClient.appId,
                                         apiKey: searchClient.transporter.queryParameters["x-algolia-api-key"]
@@ -375,16 +397,16 @@ const SearchData = props => {
       })
         .then((response) => {
           if (response.status !== 200) {
-			toast(`Failed to ${type} the app for your organization. Please try again or contact support@shuffler.io`)
+			toast(`Failed to ${type} the app for your organization. Please try again or contact ${supportEmail}`)
           }
 
           return response.json()
         })
         .then((responseJson) => {
           if (responseJson.success === false) {
-            toast(`Failed to ${type} the app for your organization. Please try again or contact support@shuffler.io for more info`) 
+            toast(`Failed to ${type} the app for your organization. Please try again or contact ${supportEmail} for more info`) 
 		  } else {
-			  toast(`App successfully ${type}d. Please refresh the page to use it.`)
+			  toast(`App successfully ${type}d. It may now be used in your workflows.`)
 		  }
         })
         .catch(error => {
@@ -417,7 +439,7 @@ const SearchData = props => {
         const baseImage = <LibraryBooksIcon />
 
         return (
-            <Card elevation={0} style={{ marginRight: 10, color: "white", zIndex: 999, backgroundColor: theme.palette.inputColor, width: 685, boxShadows: "none", }}>
+            <Card elevation={0} style={{ marginRight: 10, color: "white", zIndex: 999, backgroundColor: theme.palette.textFieldStyle.backgroundColor, width: 685, boxShadows: "none", }}>
                 {/* <IconButton style={{ zIndex: 5000, position: "absolute", right: 14, color: "grey" }} onClick={() => {
                     setSearchOpen(false)
                 }}>
@@ -427,7 +449,7 @@ const SearchData = props => {
                     Apps
                 </Typography>
 
-                <List style={{ backgroundColor: theme.palette.inputColor, }}>
+                <List style={{ backgroundColor: themeMode === "dark" ? "#2A2A2A" : "#F5F5F5", }}>
                     {hits.length === 0 ?
                         <ListItem style={outerlistitemStyle}>
                             <ListItemAvatar onClick={() => console.log(hits)}>
@@ -447,7 +469,7 @@ const SearchData = props => {
                                 overflowX: "hidden",
                                 overflowY: "hidden",
                                 borderBottom: "1px solid rgba(255,255,255,0.4)",
-                                backgroundColor: mouseHoverIndex === index ? "#1f2023" : "inherit",
+                                backgroundColor: mouseHoverIndex === index ? theme.palette.hoverColor : "inherit",
                                 cursor: "pointer",
                                 marginLeft: 5,
                                 marginRight: 5,
@@ -492,13 +514,13 @@ const SearchData = props => {
                                 })
                             }
 
-                            var parsedUrl = isCloud ? `/apps/${hit.objectID}` : `https://shuffler.io/apps/${hit.objectID}`
+                            var parsedUrl = isCloud ? `/apps/${hit.objectID}` : `/apps/${hit.objectID}`
                             parsedUrl += `?queryID=${hit.__queryID}`
 
                             return (
                                 <Link key={hit.objectID} to={parsedUrl} style={{ textDecoration: "none", color: "white", }} onClick={(event) => {
                                     setSearchOpen(true)
-                                    setModalOpen(false)
+                                    setSearchBarModalOpen(false)
                                     aa('init', {
                                         appId: searchClient.appId,
                                         apiKey: searchClient.transporter.queryParameters["x-algolia-api-key"]
@@ -546,8 +568,6 @@ const SearchData = props => {
 											onClick={(e) => {
 												e.preventDefault()
 												e.stopPropagation()
-
-												console.log("OBJECT CHANGE: ", hit.objectID)
 
 												// This does nothing rofl
 												if (userdata.active_apps === undefined || userdata.active_apps === null) {
@@ -598,7 +618,11 @@ const SearchData = props => {
         }
 
         if (hits.length > 4) {
-            hits = hits.slice(0, 4)
+            if(!isDocSearchModal) {
+                hits = hits.slice(0, 4)
+            } else {
+                hits = hits.slice(0, 15)
+            }
         }
 
         const type = "documentation"
@@ -607,15 +631,19 @@ const SearchData = props => {
         //console.log(type, hits.length, hits)
 
         return (
-            <Card elevation={0} style={{ marginRight: 10, marginTop: 50, color: "white", zIndex: 1002, backgroundColor: theme.palette.inputColor, width: "100%", left: 470, boxShadows: "none", }}>
+            <Card elevation={0} style={{ marginRight: 10, marginTop: isDocSearchModal ? 0 : 50, color: "white", zIndex: 1002, backgroundColor: theme.palette.textFieldStyle.backgroundColor, width: "100%", left: 470, boxShadows: "none", }}>
                 {/* <IconButton style={{ zIndex: 5000, position: "absolute", right: 14, color: "grey" }} onClick={() => {
                     setSearchOpen(false)
                 }}>
                     <CloseIcon />
                 </IconButton> */}
-                <Typography variant="h6" style={{ margin: "10px 10px 0px 20px", color: "#FF8444", borderBottom: "1px solid", width: 152 }}>
-                    Documentation
-                </Typography>
+                {
+                    !isDocSearchModal && (
+                        <Typography variant="h6" style={{ margin: "10px 10px 0px 20px", color: "#FF8444", borderBottom: "1px solid", width: 152 }}>
+                            Documentation
+                        </Typography>
+                    )
+                }
                 {/*
 				<IconButton edge="end" aria-label="delete" style={{position: "absolute", top: 5, right: 15,}} onClick={() => {
 					setSearchOpen(false)
@@ -623,7 +651,7 @@ const SearchData = props => {
 					<DeleteIcon />
 				</IconButton>
 				*/}
-                <List style={{ backgroundColor: theme.palette.inputColor, }}>
+                <List style={{ backgroundColor: themeMode === "dark" ? "#2A2A2A" : "#F5F5F5", marginTop: isDocSearchModal ? 35 : 0, }}>
                     {hits.length === 0 ?
                         <ListItem style={outerlistitemStyle}>
                             <ListItemAvatar onClick={() => console.log(hits)}>
@@ -643,12 +671,12 @@ const SearchData = props => {
                                 overflowX: "hidden",
                                 overflowY: "hidden",
                                 borderBottom: "1px solid rgba(255,255,255,0.4)",
-                                backgroundColor: mouseHoverIndex === index ? "#1f2023" : "inherit",
+                                backgroundColor: mouseHoverIndex === index ? theme.palette.hoverColor : "inherit",
                                 cursor: "pointer",
                                 marginLeft: 5,
                                 marginRight: 5,
-                                maxHeight: 75,
-                                minHeight: 75,
+                                maxHeight: isDocSearchModal ? 100 : 75,
+                                minHeight: isDocSearchModal ? 100 : 75,
                                 maxWidth: 420,
                                 minWidth: "100%",
                             }
@@ -659,9 +687,13 @@ const SearchData = props => {
                                 (hit.name.charAt(0).toUpperCase() + hit.name.slice(1)).replaceAll("_", " ")
 
                             if (name.length > 30) {
-                                name = name.slice(0, 30) + "..."
+                                if(isDocSearchModal) {
+                                    name = name.slice(0, 70) + "..."
+                                } else {
+                                    name = name.slice(0, 30) + "..."
+                                }
                             }
-                            const secondaryText = hit.data !== undefined ? hit.data.slice(0, 40) + "..." : ""
+                            const secondaryText = hit.data !== undefined ? hit.data.slice(0, 80) + "..." : ""
                             const avatar = hit.image_url === undefined ?
                                 baseImage
                                 :
@@ -702,7 +734,7 @@ const SearchData = props => {
 
                                     console.log("CLICK")
                                     setSearchOpen(true)
-                                    setModalOpen(false)
+                                    setSearchBarModalOpen(false)
                                 }}>
                                     <ListItem key={hit.objectID} style={innerlistitemStyle} onMouseOver={() => {
                                         setMouseHoverIndex(index)
@@ -712,7 +744,7 @@ const SearchData = props => {
                                         </ListItemAvatar>
                                         <ListItemText
                                             primary={name}
-                                            secondary={secondaryText}
+                                            secondary={<div style={{ padding: '8px 0' }}>{secondaryText}</div>}
                                         />
                                         {/*
 									<ListItemSecondaryAction>
@@ -756,13 +788,20 @@ const SearchData = props => {
             window.open(modifiedUrl, '_blank');
         };
         return (
-            <Card elevation={0} style={{ marginRight: 10, marginTop: 50, color: "white", zIndex: 1002, backgroundColor: theme.palette.inputColor, width: "100%", left: 470, boxShadows: "none", }}>
+            <Card elevation={0} style={{ marginRight: 10, marginTop: 50, color: "white", zIndex: 1002, backgroundColor: theme.palette.textFieldStyle.backgroundColor, width: "100%", left: 470, boxShadows: "none", }}>
                 <Typography variant="h6" style={{ margin: "10px 10px 0px 20px", color: "#FF8444", borderBottom: "1px solid", width: 152 }}>
                     Discord Chat
                 </Typography>
-                <List style={{ backgroundColor: theme.palette.inputColor, }}>
+                <List style={{ backgroundColor: themeMode === "dark" ? "#2A2A2A" : "#F5F5F5", }}>
                 {hits.length === 0 ?
-                        <ListItem style={outerlistitemStyle}>
+                        <ListItem
+                        sx={{
+                          "&:hover": {
+                            backgroundColor: theme.palette.hoverColor
+                          }
+                        }}
+                        style={outerlistitemStyle}
+                      >                                            
                             <ListItemAvatar onClick={() => console.log(hits)}>
                                 <Avatar>
                                     <FolderIcon />
@@ -774,7 +813,11 @@ const SearchData = props => {
                             />
                         </ListItem>:
                         hits.map((chat, index) => (
-                    <ListItem onClick={() => handleHitClick(chat.url)} key={index} style={{ cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,0.4)" }} onMouseOver={() => setMouseHoverIndex(index)}>
+                    <ListItem  sx={{
+                        "&:hover": {
+                          backgroundColor: theme.palette.hoverColor
+                        }
+                      }} onClick={() => handleHitClick(chat.url)} key={index} style={{ cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,0.4)" }} onMouseOver={() => setMouseHoverIndex(index)}>
                         <ListItemAvatar>
                             <Avatar src="/discord-logo.png" />
                         </ListItemAvatar>
@@ -873,10 +916,11 @@ const SearchData = props => {
                 </List>
             </Grid>
             <Grid style={{ textAlign: "end", width: "100%", textTransform: 'capitalize', }}>
-                <Button style={{ textAlign: "center", textTransform: 'capitalize' }}
-                    onClick={() => { window.location = "/search"; }} >
-                    See More
-                </Button>
+				<Link to="/search" style={{ textDecoration: "none", color: "#f85a3e" }}>	
+                	<Button style={{ textAlign: "center", textTransform: 'capitalize' }}>
+                    	See More
+                	</Button>
+				</Link>
             </Grid>
         </Grid>
     ) : null
@@ -889,28 +933,38 @@ const SearchData = props => {
 
     const modalView = (
         <div>
-            <Grid container style={{ display: "contents", }}>
-                <Grid item xs="auto" style={{}}>
-                    <Index indexName="appsearch">
-                        <CustomAppHits />
-                    </Index>
+            {
+                !isDocSearchModal ? (
+                <Grid container style={{ display: "contents", }}>
+                    <Grid item xs="auto" style={{}}>
+                        <Index indexName="appsearch">
+                            <CustomAppHits />
+                        </Index>
+                    </Grid>
+                    <Grid item xs="auto" style={{}}>
+                        <Index indexName="workflows">
+                            <CustomWorkflowHits />
+                        </Index>
+                    </Grid>
+                    <Grid item xs="auto" style={{}}>
+                        <Index indexName="documentation">
+                            <CustomDocHits />
+                        </Index>
+                    </Grid>
+                    <Grid item xs="auto" style={{}}>
+                        <Index indexName="discord_chat">
+                            <CustomDiscordHits />
+                        </Index>
+                    </Grid>
                 </Grid>
-                <Grid item xs="auto" style={{}}>
-                    <Index indexName="workflows">
-                        <CustomWorkflowHits />
-                    </Index>
-                </Grid>
-                <Grid item xs="auto" style={{}}>
-                    <Index indexName="documentation">
-                        <CustomDocHits />
-                    </Index>
-                </Grid>
-                <Grid item xs="auto" style={{}}>
-                    <Index indexName="discord_chat">
-                        <CustomDiscordHits />
-                    </Index>
-                </Grid>
-            </Grid>
+                ) : (
+                    <Grid item xs="auto" style={{width: "100%"}}>
+                        <Index indexName="documentation">
+                            <CustomDocHits />
+                        </Index>
+                    </Grid>
+                )
+            }
         </div>
     )
 
@@ -924,7 +978,7 @@ const SearchData = props => {
                 <CustomSearchBox />
                 {modalView}
             </InstantSearch>
-            {gettingStartData}
+            {!isDocSearchModal && gettingStartData}
         </div>
     )
 }

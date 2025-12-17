@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import { makeStyles } from "@mui/styles";
 import { BrowserView, MobileView } from "react-device-detect";
-import theme from '../theme.jsx';
+import { getTheme } from '../theme.jsx';
 
 import {
   Paper,
   Typography,
   FormControlLabel,
   Button,
+  ButtonGroup,
   Divider,
   Select,
   MenuItem,
@@ -37,14 +38,15 @@ import {
   AttachFile as AttachFileIcon,
   Apps as AppsIcon,
   ErrorOutline as ErrorOutlineIcon,
-	AddAPhoto as AddAPhotoIcon, 
-	AddAPhotoOutlined as AddAPhotoOutlinedIcon, 
-	ZoomInOutlined as ZoomInOutlinedIcon,
-	ZoomOutOutlined as ZoomOutOutlinedIcon,
-	Loop as LoopIcon,
-	AddPhotoAlternate as AddPhotoAlternateIcon,
-	CallMerge as CallMergeIcon,
+  AddAPhoto as AddAPhotoIcon, 
+  AddAPhotoOutlined as AddAPhotoOutlinedIcon, 
+  ZoomInOutlined as ZoomInOutlinedIcon,
+  ZoomOutOutlined as ZoomOutOutlinedIcon,
+  Loop as LoopIcon,
+  AddPhotoAlternate as AddPhotoAlternateIcon,
+  CallMerge as CallMergeIcon,
   CloudDownload as CloudDownloadIcon,
+  OpenInNew as OpenInNewIcon,
 } from "@mui/icons-material";
 
 import { v4 as uuidv4 } from "uuid";
@@ -53,9 +55,10 @@ import YAML from "yaml";
 import { MuiChipsInput } from "mui-chips-input";
 //import { useAlert
 import { ToastContainer, toast } from "react-toastify" 
-import words from "shellwords";
+import { split } from "shellwords";
 
 import AvatarEditor from "react-avatar-editor";
+import { Context } from "../context/ContextApi.jsx";
 
 const surfaceColor = "#27292D";
 const inputColor = "#383B40";
@@ -63,33 +66,10 @@ const inputColor = "#383B40";
 const bodyDivStyle = {
   margin: "auto",
   width: "900px",
+  zoom: 0.8,
 };
 
-const actionListStyle = {
-  paddingLeft: "10px",
-  paddingRight: "10px",
-  paddingBottom: "10px",
-  paddingTop: "10px",
-  marginTop: "5px",
-  backgroundColor: inputColor,
-  display: "flex",
-  color: "white",
-	position: "relative",
-};
 
-const boxStyle = {
-  color: "white",
-  flex: "1",
-  marginLeft: "10px",
-  marginRight: "10px",
-  paddingLeft: "30px",
-  paddingRight: "30px",
-  paddingBottom: "30px",
-  paddingTop: "30px",
-  display: "flex",
-  flexDirection: "column",
-  backgroundColor: surfaceColor,
-};
 
 const dividerStyle = {
   marginBottom: "10px",
@@ -140,7 +120,7 @@ const parseCurl = (s) => {
   }
 
   try {
-    var args = rewrite(words.split(s));
+    var args = rewrite(split(s));
   } catch (e) {
     return s;
   }
@@ -228,6 +208,8 @@ const parseCurl = (s) => {
 };
 
 // Basically CRUD for each category + special
+// These are already tracked in the shuffle/shuffle-shared/blobs.go file
+// as backend should be used for managing this long-term
 export const appCategories = [
 	{
 		"name": "Communication",
@@ -270,7 +252,14 @@ export const appCategories = [
 		"color": "#FFC107",
 		"icon": "network",
 		"action_labels": ["Get Rules", "Allow IP", "Block IP",],
-	}, {
+	}, 
+	{
+		"name": "AI",
+		"color": "#FFC107",
+		"icon": "AI",
+		"action_labels": ["Answer Question", "Run Action", "Run LLM",],
+	},
+	{
 		"name": "Other",
 		"color": "#FFC107",
 		"icon": "other",
@@ -412,9 +401,41 @@ const AppCreator = (defaultprops) => {
   const [appBuilding, setAppBuilding] = useState(false);
   const [fileDownloadEnabled, setFileDownloadEnabled] = useState(false);
   const [actionAmount, setActionAmount] = useState(increaseAmount);
+  const [newAppGroup, setNewAppGroup] = useState("")
+
+  const { themeMode, supportEmail, brandColor } = useContext(Context);
+  const theme = getTheme(themeMode, brandColor);
 
   const [oauth2Scopes, setOauth2Scopes] = useState([]);
   const [oauth2Type, setOauth2Type] = useState("delegated");
+
+  const actionListStyle = {
+    paddingLeft: "10px",
+    paddingRight: "10px",
+    paddingBottom: "10px",
+    paddingTop: "10px",
+    marginTop: "5px",
+    display: "flex",
+    color: theme.palette.text.primary,
+    position: "relative",
+  
+    backgroundColor: theme.palette.platformColor,
+  };
+  
+  const boxStyle = {
+    color: theme.palette.text.primary,
+    flex: "1",
+    marginLeft: "10px",
+    marginRight: "10px",
+    paddingLeft: "30px",
+    paddingRight: "30px",
+    paddingBottom: "30px",
+    paddingTop: "30px",
+    display: "flex",
+    flexDirection: "column",
+  
+    backgroundColor: theme.palette.platformColor,
+  };
 
   //client_credentials
   const [oauth2GrantType, setOauth2GrantType] = useState("");
@@ -542,7 +563,7 @@ const AppCreator = (defaultprops) => {
   };
   
 
-  const isCloud = window.location.host === "localhost:3002" || window.location.host === "shuffler.io";
+  const isCloud = (window.location.host === "localhost:3002" || window.location.host === "shuffler.io") ? true : (process.env.IS_SSR === "true");
 
   useEffect(() => {
 		if (window.location.pathname.includes("apps/edit")) {
@@ -725,7 +746,7 @@ const AppCreator = (defaultprops) => {
     }
 
     setBasedata(data);
-		console.log("Info: ", data)
+		console.log("Loaded Info: ", data)
 
 		try { 
 			if (data.info !== null && data.info !== undefined) {
@@ -739,7 +760,12 @@ const AppCreator = (defaultprops) => {
 					if (data.info.title.length > 29) {
 						setName(data.info.title.slice(0, 29));
 					} else {
-						setName(data.info.title);
+						// Check if fork=true in URL
+						if (window.location.search.includes("fork=true")) {
+							setName(data.info.title + " Fork");
+						} else {
+							setName(data.info.title)
+						}
 					}
 				}
 
@@ -895,8 +921,31 @@ const AppCreator = (defaultprops) => {
             };
 
 			if (methodvalue["x-label"] !== undefined && methodvalue["x-label"] !== null) {
+				console.log("LABEL: ", methodvalue["x-label"])
+		
+				var correctlabel = "" 
+				const labels = methodvalue["x-label"].split(",")
+				for (let labelkey in labels) {
+					var label = labels[labelkey].trim()
+					if (label.toLowerCase() === "no label") {
+						continue
+					}
+
+					// Remove quotes and escapes
+					label = label.replace(/['"]+/g, '')
+					label = label.replace(/\\/g, '')
+
+					//label = label.replace("_", " ", -1)
+					//label = label.charAt(0).toUpperCase() + label.slice(1)
+
+					correctlabel = label
+					break
+				}
+
+				console.log("LABEL: ", correctlabel)
 				// FIX: Map labels only if they're actually in the category list
-				newaction.action_label = methodvalue["x-label"]
+				//newaction.action_label = methodvalue["x-label"]
+				newaction.action_label = correctlabel
 			}
 
 			if (methodvalue["x-required-fields"] !== undefined && methodvalue["x-required-fields"] !== null) {
@@ -906,8 +955,8 @@ const AppCreator = (defaultprops) => {
 			if (newaction.url !== undefined && newaction.url !== null && newaction.url.includes("_shuffle_replace_")) {
 				//const regex = /_shuffle_replace_\d/i;
 				const regex = /_shuffle_replace_\d+/i
-				
-				newaction.url = newaction.url.replaceAll(new RegExp(regex, 'g'), "")
+				const newurl = newaction.url.replaceAll(new RegExp(regex, 'g'), "")
+				newaction.url = newurl
 			}
 
           // Finding category
@@ -919,7 +968,6 @@ const AppCreator = (defaultprops) => {
 				if (pathsplit[splitkey].includes("_shuffle_replace_")) {
 					//const regex = /_shuffle_replace_\d/i;
 					const regex = /_shuffle_replace_\d+/i
-					//console.log("NEW: ", 
 					pathsplit[splitkey] = pathsplit[splitkey].replaceAll(new RegExp(regex, 'g'), "")
 				}
 
@@ -1931,7 +1979,7 @@ const AppCreator = (defaultprops) => {
   // Saving the app that's been configured.
 	// Save SAVE app
   const submitApp = () => {
-    toast("Uploading and building app " + name);
+    toast.info("Uploading and building app " + name + ". This may take a minute or two.");
     setAppBuilding(true);
     setErrorCode("");
 
@@ -1941,6 +1989,8 @@ const AppCreator = (defaultprops) => {
     const schemes = [splitBase[0]];
     const basePath = "/" + splitBase.slice(3).join("/");
 
+	const newBaseUrl = baseUrl.replaceAll("http//", "http://").replaceAll("https//", "https://")
+
     const data = {
       openapi: "3.0.0",
       info: {
@@ -1949,7 +1999,7 @@ const AppCreator = (defaultprops) => {
         version: "1.0",
         "x-logo": fileBase64,
       },
-      servers: [{ url: baseUrl }],
+      servers: [{ url: newBaseUrl }],
       host: host,
       basePath: basePath,
       schemes: schemes,
@@ -2000,7 +2050,7 @@ const AppCreator = (defaultprops) => {
     for (let actionkey in actions) {
       var item = JSON.parse(JSON.stringify(actions[actionkey]))
       if (item.errors.length > 0) {
-        toast("Saving with error in action " + item.name);
+        //toast("Saving with error in action " + item.name);
       }
 
       if (item.name === undefined && item.description !== undefined) {
@@ -2558,14 +2608,22 @@ const AppCreator = (defaultprops) => {
     }
 
     if (setExtraAuth.length > 0) {
+	  const invalidfieldnames = ["apikey", "username", "password", "username_basic", "password_basic", "url", "access_token"]
       for (let authkey in extraAuth) {
         const curauth = extraAuth[authkey];
-
         if (curauth.name.length === 0 || curauth.name.toLowerCase() == "url") {
           toast("Can't add extra auth with empty name or Name URL");
           setAppBuilding(false);
           return;
         }
+
+		// Additional comparisonchecks
+    	if (authenticationOption !== "No authentication" && authenticationOption !== "") {
+			if (invalidfieldnames.includes(curauth.name.toLowerCase())) {
+				toast.warn("Skipping extra auth field: " + curauth.name + ". This is not valid.")
+				continue
+			}
+		}
 
         data.components.securitySchemes[curauth.name] = {
           type: "apiKey",
@@ -2587,29 +2645,54 @@ const AppCreator = (defaultprops) => {
       credentials: "include",
     })
       .then((response) => {
-        //if (response.status !== 200) {
-        //	setErrorCode("An error occurred during validation")
-        //	throw new Error("NOT 200 :O")
-        //}
+		setAppBuilding(false)
+        if (response.status === 403) {
 
-        setAppBuilding(false);
+
+    		var urlParams = new URLSearchParams(window.location.search)
+			if (urlParams.has("id")) {
+				toast.error(`Please log in to build this app. If this error persists, please contact ${supportEmail}`)
+			} else {
+				toast.error("Failed to save the app as you are not the owner. Redirecting you to the forking page. If this does not load, please download and re-import the app.", {
+					autoClose: 10000
+				})
+				if (props.match.params.appid !== undefined && props.match.params.appid !== null && props.match.params.appid.length > 0) {
+					setTimeout(() => {
+						window.open(`/apps/new?id=${props.match.params.appid}`, "_blank")
+					}, 2500)
+				}
+			}
+
+			return
+        }
+
+        if (response.status !== 200) {
+        	setErrorCode("An error occurred during validation")
+        	//throw new Error("NOT 200 :O")
+        }
+
         return response.json();
       })
       .then((responseJson) => {
-        if (!responseJson.success) {
-		  if (responseJson.extra !== undefined && responseJson.extra !== null) {
+        if (responseJson?.success !== true) {
+		  if (responseJson?.extra !== undefined && responseJson?.extra !== null) {
 			toast("Failed building: " + responseJson.extra);
-		  }
-
-          if (responseJson.reason !== undefined) {
+		  } else if (responseJson?.reason !== undefined) {
             setErrorCode(responseJson.reason);
 
-			if (responseJson.extra === undefined && responseJson.extra === null) {
-            	toast("Failed to verify: " + responseJson.reason);
+			if (responseJson?.details !== undefined && responseJson?.details !== null) {
+				toast.error("Failed to build - contact support@shuffler.io:\n\n" + responseJson.details, {
+					autoClose: 60000 
+				})
+			} else {
+				toast.error("Failed to build: \n\n" + responseJson?.reason, {
+					autoClose: 10000
+				})
 			}
-          }
+          } else {
+		  }
         } else {
-          toast("Successfully uploaded openapi");
+          toast.success("Successfully built openapi app! Added job to rebuild it in your hybrid runtime locations (Orborus).");
           if (window.location.pathname.includes("/new")) {
             if (responseJson.id !== undefined && responseJson.id !== null) {
               window.location = `/apps/edit/${responseJson.id}`;
@@ -2620,18 +2703,18 @@ const AppCreator = (defaultprops) => {
       .catch((error) => {
         setAppBuilding(false);
         setErrorCode(error.toString());
-        toast(error.toString());
+        toast.error(error.toString());
       });
   };
 
   const bearerAuth =
     authenticationOption === "Bearer auth" ? (
-      <div style={{ color: "white" }}>
+      <div style={{ color: theme.palette.text.primary }}>
         <h4>
           <a
             target="_blank"
             href="https://swagger.io/docs/specification/authentication/bearer-authentication/"
-            style={{ textDecoriation: "none", color: "#f85a3e" }}
+            style={{ textDecoriation: "none", color: theme.palette.linkColor }}
           >
             Bearer auth
           </a>
@@ -2644,12 +2727,12 @@ const AppCreator = (defaultprops) => {
   // Basicauth
   const basicAuth =
     authenticationOption === "Basic auth" ? (
-      <div style={{ color: "white" }}>
+      <div style={{ color: theme.palette.text.primary }}>
         <h4>
           <a
             target="_blank"
             href="https://swagger.io/docs/specification/authentication/basic-authentication/"
-            style={{ textDecoriation: "none", color: "#f85a3e" }}
+            style={{ textDecoriation: "none", color: theme.palette.linkColor }}
           >
             Basic authentication
           </a>
@@ -2743,7 +2826,7 @@ const AppCreator = (defaultprops) => {
                 flex: 2,
                 marginTop: 0,
                 marginBottom: 0,
-                backgroundColor: inputColor,
+                backgroundColor: theme.palette.textFieldStyle.backgroundColor,
                 marginRight: 5,
               }}
               fullWidth={true}
@@ -2752,16 +2835,28 @@ const AppCreator = (defaultprops) => {
               margin="normal"
               variant="outlined"
               defaultValue={extraAuth[index].name}
+			  helperText={
+				  <Typography variant="caption" style={{ color: theme.palette.error.main, marginTop: 10, marginBottom: 10, }}>
+				  	{extraAuth[index]?.name?.toLowerCase() === "url" 
+					  || extraAuth[index]?.name?.toLowerCase() === "apikey"
+					  ? `ERROR: Invalid key: ${extraAuth[index].name}. ` : ""}
+					</Typography>
+			  }
               onChange={(e) => {
                 extraAuth[index].name = e.target.value;
                 setExtraAuth(extraAuth);
               }}
+			  onBlur={(e) => {
+				  // Forcerender
+				  setUpdate(Math.random());
+			  }}
               InputProps={{
                 classes: {
                   notchedOutline: classes.notchedOutline,
                 },
                 style: {
-                  color: "white",
+                  color: theme.palette.textFieldStyle.color,
+                  backgroundColor: theme.palette.textFieldStyle.backgroundColor,
                   minHeight: 50,
                   marginLeft: 5,
                   maxWidth: "95%",
@@ -2776,7 +2871,7 @@ const AppCreator = (defaultprops) => {
                 marginTop: 0,
                 marginBottom: 0,
                 flex: 2,
-                backgroundColor: inputColor,
+                backgroundColor: theme.palette.textFieldStyle.backgroundColor,
                 marginRight: 5,
               }}
               fullWidth={true}
@@ -2791,7 +2886,8 @@ const AppCreator = (defaultprops) => {
               }}
               InputProps={{
                 style: {
-                  color: "white",
+                  color: theme.palette.textFieldStyle.color,
+                  backgroundColor: theme.palette.textFieldStyle.backgroundColor,
                   minHeight: 50,
                   marginLeft: 5,
                   maxWidth: "95%",
@@ -2809,9 +2905,9 @@ const AppCreator = (defaultprops) => {
               value={extraAuth[index].type}
               style={{
                 flex: 1,
-                backgroundColor: inputColor,
+                backgroundColor: theme.palette.backgroundColor,
                 paddingLeft: "10px",
-                color: "white",
+                color: theme.palette.text.primary,
                 height: 50,
                 borderRadius: theme.shape.borderRadius,
               }}
@@ -2822,20 +2918,20 @@ const AppCreator = (defaultprops) => {
             >
               <MenuItem
                 key={index}
-                style={{ backgroundColor: inputColor, color: "white" }}
+                style={{ backgroundColor: theme.palette.backgroundColor, color: theme.palette.text.primary }}
                 value={"header"}
               >
                 Header
               </MenuItem>
               <MenuItem
                 key={index}
-                style={{ backgroundColor: inputColor, color: "white" }}
+                style={{ backgroundColor: theme.palette.backgroundColor, color: theme.palette.text.primary }}
                 value={"query"}
               >
                 Query
               </MenuItem>
             </Select>
-            <div style={{ display: "flex", width: 100 }}>
+            <ButtonGroup style={{ display: "flex", width: 100 }}>
               {index === extraAuth.length - 1 ? (
                 <Button
                   color="primary"
@@ -2868,7 +2964,7 @@ const AppCreator = (defaultprops) => {
               >
                 <RemoveIcon style={{}} />
               </Button>
-            </div>
+            </ButtonGroup>
           </span>
         );
       })}
@@ -2877,7 +2973,7 @@ const AppCreator = (defaultprops) => {
 
   const jwtAuth =
     authenticationOption === "JWT" ? (
-      <div style={{ color: "white", marginTop: 20 }}>
+      <div style={{ color: theme.palette.text.primary, marginTop: 20 }}>
         <Typography variant="body1">JWT authentication</Typography>
         <Typography
           variant="body2"
@@ -2896,7 +2992,7 @@ const AppCreator = (defaultprops) => {
           variant="outlined"
           defaultValue={parameterName}
           helperText={
-            <span style={{ color: "white", marginBottom: "2px" }}>
+            <span style={{ color: theme.palette.text.primary, marginBottom: "2px" }}>
               Must start with / and be a valid path
             </span>
           }
@@ -2906,7 +3002,7 @@ const AppCreator = (defaultprops) => {
               notchedOutline: classes.notchedOutline,
             },
             style: {
-              color: "white",
+              color: theme.palette.text.primary,
             },
           }}
         />
@@ -2927,7 +3023,7 @@ const AppCreator = (defaultprops) => {
           variant="outlined"
           defaultValue={parameterName}
           helperText={
-            <span style={{ color: "white", marginBottom: "2px" }}>
+            <span style={{ color: theme.palette.text.primary, marginBottom: "2px" }}>
 			  Must use 'key=value&key=value' format
             </span>
           }
@@ -2939,7 +3035,7 @@ const AppCreator = (defaultprops) => {
               notchedOutline: classes.notchedOutline,
             },
             style: {
-              color: "white",
+              color: theme.palette.text.primary,
             },
           }}
         />
@@ -2949,7 +3045,7 @@ const AppCreator = (defaultprops) => {
 
   const oauth2Auth =
     authenticationOption === "Oauth2" ? (
-      <div style={{ color: "white", marginTop: 20 }}>
+      <div style={{ color: theme.palette.text.primary, marginTop: 20 }}>
         <Typography variant="body1">Oauth2 authentication</Typography>
         <Typography
           variant="body2"
@@ -3008,7 +3104,7 @@ const AppCreator = (defaultprops) => {
         		      notchedOutline: classes.notchedOutline,
         		    },
         		    style: {
-        		      color: "white",
+        		      color: theme.palette.text.primary,
         		    },
         		  }}
         		/>
@@ -3059,7 +3155,7 @@ const AppCreator = (defaultprops) => {
               notchedOutline: classes.notchedOutline,
             },
             style: {
-              color: "white",
+              color: theme.palette.text.primary,
             },
           }}
         />
@@ -3108,7 +3204,7 @@ const AppCreator = (defaultprops) => {
 							}}
         		  InputProps={{
         		    style: {
-        		      color: "white",
+        		      color: theme.palette.text.primary,
         		    },
         		  }}
         		/>
@@ -3122,15 +3218,14 @@ const AppCreator = (defaultprops) => {
 		  Scopes for Oauth2
 		</Typography>
 		<MuiChipsInput
-		  style={{border: "2px solid #f86a3e", borderRadius: theme.palette.borderRadius,}}
-					required
+		  required
 		  InputProps={{
 			style: {
-			  color: "white",
-			  maxHeight: 50,
+			  color: theme.palette.text.primary,
+			  maxHeight: 160,
 			},
 		  }}
-		  style={{ maxHeight: 80, overflowX: "hidden", overflowY: "auto" }}
+		  style={{ minHeight: 160, maxHeight: 160, overflowX: "hidden", overflowY: "auto" }}
 		  placeholder="Available Oauth2 Scopes"
 		  color="primary"
 		  fullWidth
@@ -3139,16 +3234,22 @@ const AppCreator = (defaultprops) => {
 			  setOauth2Scopes(chips)
 			  setUpdate(Math.random())
 		  }}
+		  onBlur={(e) => {
+			  var newchips = oauth2Scopes
+			  newchips.push(e.target.value)
+			  setOauth2Scopes(newchips)
+			  setUpdate(Math.random())
+		  }}
 		/>
       </div>
     ) : null;
 
   const apiKey =
     authenticationOption === "API key" ? (
-      <div style={{ color: "white", marginTop: 20 }}>
+      <div style={{ color: theme.palette.text.primary, marginTop: 20 }}>
         <Typography variant="body1">API key authentication</Typography>
         <Typography variant="body2" color="textSecondary">
-          Add the name of the field used for authentication, e.g. "X-APIKEY". Should NOT be your actual API-key.
+          <b>Do NOT put your actual API-key.</b> Add the name of the field used for authentication, e.g. "X-APIKEY". 
         </Typography>
 				<div style={{display: "flex", marginTop: 10, }}>
 					<div style={{flex: 4,}}>
@@ -3157,14 +3258,14 @@ const AppCreator = (defaultprops) => {
 							required
 							style={{ marginTop: 0, backgroundColor: inputColor }}
 							fullWidth={true}
-							placeholder="Field Name (key, NOT your actual API-key)"
+							placeholder="The Key to use as the header/query - NOT your actual API-key"
 							type="name"
 							id="standard-required"
 							margin="normal"
 							variant="outlined"
 							value={parameterName}
 							helperText={
-								<span style={{ color: "white", marginBottom: "2px" }}>
+								<span style={{ color: theme.palette.text.primary, marginBottom: "2px" }}>
 									Can't be empty or contain any of the following: !#$%&'^"+-._~|]+$:=
 								</span>
 							}
@@ -3181,7 +3282,7 @@ const AppCreator = (defaultprops) => {
 									notchedOutline: classes.notchedOutline,
 								},
 								style: {
-									color: "white",
+									color: theme.palette.text.primary,
 								},
 							}}
 						/>
@@ -3198,7 +3299,7 @@ const AppCreator = (defaultprops) => {
         		    borderRadius: theme.shape.borderRadius,
         		    backgroundColor: inputColor,
         		    paddingLeft: 10,
-        		    color: "white",
+        		    color: theme.palette.text.primary,
         		    height: 57,
         		  }}
         		  inputProps={{
@@ -3214,7 +3315,7 @@ const AppCreator = (defaultprops) => {
         		    return (
         		      <MenuItem
         		        key={index}
-        		        style={{ backgroundColor: inputColor, color: "white" }}
+        		        style={{ backgroundColor: inputColor, color: theme.palette.text.primary }}
         		        value={data}
         		      >
         		        {data}
@@ -3331,13 +3432,13 @@ const AppCreator = (defaultprops) => {
 	const ActionPaper = (props) => {
 		const { data, index } = props
 
-  	const [updater, setUpdater] = useState("tmp");
-  	const [actionsModalOpen, setActionsModalOpen] = useState(false);
-  	const [urlPath, setUrlPath] = useState("");
-  	const [fileUploadEnabled, setFileUploadEnabled] = useState(false);
-  	const [currentActionMethod, setCurrentActionMethod] = useState(actionNonBodyRequest[0])
-  	const [extraBodyFields, setExtraBodyFields] = useState([]);
-  	const [urlPathQueries, setUrlPathQueries] = useState([]);
+		const [updater, setUpdater] = useState("tmp");
+		const [actionsModalOpen, setActionsModalOpen] = useState(false);
+		const [urlPath, setUrlPath] = useState("");
+		const [fileUploadEnabled, setFileUploadEnabled] = useState(false);
+		const [currentActionMethod, setCurrentActionMethod] = useState(actionNonBodyRequest[0])
+		const [extraBodyFields, setExtraBodyFields] = useState([]);
+		const [urlPathQueries, setUrlPathQueries] = useState([]);
 		const [currentAction, setCurrentAction] = useState({
 			name: "",
 			file_field: "",
@@ -3354,6 +3455,10 @@ const AppCreator = (defaultprops) => {
 			required_bodyfields: [],
 		});
 
+		//useEffect(() => {
+		//	console.log("Queries: ", urlPathQueries)
+		//}, [urlPathQueries])
+
 		const findBodyParams = (body) => {
 			const regex = /\${(\w+)}/g;
 			const found = body.match(regex);
@@ -3362,7 +3467,7 @@ const AppCreator = (defaultprops) => {
 			} else {
 				setExtraBodyFields(found);
 			}
-  	};
+		};
 
 		const UrlPathParameters = () => {
 			const values = getCurrentPaths(urlPath);
@@ -3395,29 +3500,27 @@ const AppCreator = (defaultprops) => {
 			) : null;
 		};
 
-
 		const HandleIndividualChip = (props) => {
-    		const { chipData, index } = props;
-    		const [chipRequired, setChipRequired] = useState(currentAction.required_bodyfields !== undefined ? currentAction.required_bodyfields.includes(chipData) : false);
+			const { chipData, index } = props;
+			const [chipRequired, setChipRequired] = useState(currentAction.required_bodyfields !== undefined ? currentAction.required_bodyfields.includes(chipData) : false);
 
 				const parsedChip = chipData.startsWith("${") && chipData.endsWith("}") ? chipData.substring(2, chipData.length - 1) : chipData
 
-    		return (
-    		  <Tooltip title={chipRequired ? "Make not required" : "Make required"}>
-    		    <Chip
-    		      style={{
-    		        backgroundColor: chipRequired ? "#f86a3e" : "#3d3f43",
-    		        height: 30,
-    		        margin: 3,
-    		        paddingLeft: 5,
-    		        paddingRight: 5,
-    		        height: 28,
-    		        cursor: "pointer",
-    		        borderColor: "#3d3f43",
-    		        color: "white",
-    		      }}
-    		      label={parsedChip}
-    		      onClick={() => {
+			return (
+			  <Tooltip title={chipRequired ? "Make not required" : "Make required"}>
+				<Chip
+				  style={{
+					backgroundColor: chipRequired ? "#f86a3e" : theme.palette.chipStyle.backgroundColor,
+					height: 30,
+					margin: 3,
+					paddingLeft: 5,
+					paddingRight: 5,
+					cursor: "pointer",
+					borderColor: theme.palette.chipStyle.borderColor,
+					color: theme.palette.chipStyle.color,
+				  }}
+				  label={parsedChip}
+				  onClick={() => {
 						if (chipRequired) {
 							currentAction["required_bodyfields"].splice(currentAction["required_bodyfields"].indexOf(chipData), 1)
 						} else {
@@ -3425,27 +3528,28 @@ const AppCreator = (defaultprops) => {
 						}
 
 					setCurrentAction(currentAction);
-    		        setChipRequired(!chipRequired);
-    		      }}
-    		    />
-    		  </Tooltip>
-    		);
-  	};
-
-		const setActionField = (field, value) => {
-			currentAction[field] = value
-			setCurrentAction(currentAction)
-
-			//setUrlPathQueries(currentAction.queries)
+					setChipRequired(!chipRequired);
+				  }}
+				/>
+			  </Tooltip>
+			);
 		};
 
-		const addPathQuery = () => {
+	const setActionField = (field, value) => {
+		currentAction[field] = value
+		setCurrentAction(currentAction)
+
+		//setUrlPathQueries(currentAction.queries)
+	};
+
+	const addPathQuery = () => {
   	  urlPathQueries.push({ name: "", required: true, example: "", });
   	  if (updater === "addupdater") {
   	    setUpdater("updater");
   	  } else {
   	    setUpdater("addupdater");
   	  }
+
   	  setUrlPathQueries(urlPathQueries);
   	};
 
@@ -3456,6 +3560,7 @@ const AppCreator = (defaultprops) => {
   	  } else {
   	    setUpdater("flipupdater");
   	  }
+
   	  setUrlPathQueries(urlPathQueries);
   	};
 
@@ -3474,7 +3579,7 @@ const AppCreator = (defaultprops) => {
   	  }
   	};
 
-		const loopQueries = urlPathQueries.length === 0 ? null : (
+	const loopQueries = urlPathQueries.length === 0 ? null : (
       <div>
         <Divider
           style={{
@@ -3492,51 +3597,42 @@ const AppCreator = (defaultprops) => {
           return (
             <Paper key={queryIndex} style={actionListStyle}>
               <div style={{ marginLeft: "5px", width: "100%" }}>
-								<div style={{display: "flex"}}>
-									<TextField
-										required
-										fullWidth={true}
-										defaultValue={query.name}
-										placeholder={"Query name (key)"}
-										label={"Query Key"}
-										helperText={
-											<span style={{ color: "white", marginBottom: "2px" }}>
-												Click required to flip 
-											</span>
-										}
-										onBlur={(e) => {
-											console.log("IN BLUR: ", e.target.value);
-											urlPathQueries[queryIndex].name = e.target.value.replaceAll("=", "");
-											setUrlPathQueries(urlPathQueries);
-										}}
-										style={{flex: 3}}
-										InputProps={{
-											style: {
-												color: "white",
-											},
-										}}
-									/>
-									<TextField
-										fullWidth={true}
-										defaultValue={query.example}
-										placeholder={"Default value"}
-										label={"Example"}
-										onBlur={(e) => {
-											urlPathQueries[queryIndex].example = e.target.value.replaceAll(
-												"=",
-												""
-											)
-
-											setUrlPathQueries(urlPathQueries)
-										}}
-										style={{flex: 2}}
-										InputProps={{
-											style: {
-												color: "white",
-											},
-										}}
-									/>
-								</div>
+					<div style={{display: "flex"}}>
+						<TextField
+							required
+							fullWidth={true}
+							defaultValue={query.name}
+							placeholder={"Query name (key)"}
+							label={"Query Key"}
+							onBlur={(e) => {
+								urlPathQueries[queryIndex].name = e.target.value.replaceAll("=", "")
+								setUrlPathQueries(urlPathQueries)
+							}}
+							style={{flex: 3}}
+							InputProps={{
+								style: {
+									color: theme.palette.text.primary,
+								},
+							}}
+						/>
+						<TextField
+							fullWidth={true}
+							defaultValue={query.example}
+							placeholder={"Default value"}
+							label={"Example"}
+							onBlur={(e) => {
+								// E.g. for Jira -> JQL -> requires = in param
+								urlPathQueries[queryIndex].example = e.target.value.replaceAll("=","=")
+								setUrlPathQueries(urlPathQueries)
+							}}
+							style={{flex: 2}}
+							InputProps={{
+								style: {
+									color: theme.palette.text.primary,
+								},
+							}}
+						/>
+					</div>
                 <div
                   style={{ cursor: "pointer" }}
                   onClick={() => {
@@ -3555,7 +3651,7 @@ const AppCreator = (defaultprops) => {
                   deletePathQuery(queryIndex);
                 }}
               >
-  							<DeleteIcon />
+  				<DeleteIcon />
               </div>
             </Paper>
           );
@@ -3605,7 +3701,7 @@ const AppCreator = (defaultprops) => {
   	    )}
   	    <TextField
   	      required
-  	      style={{ flex: "1", marginRight: "15px", backgroundColor: inputColor }}
+  	      style={{ flex: "1", marginRight: "15px", backgroundColor: theme.palette.textFieldStyle.backgroundColor }}
   	      fullWidth={true}
   	      placeholder={
   	        '{\n\t"example": "${example}",\n\t"apikey": "${apikey}",\n\t"search": "1.2.3.5"\n}'
@@ -3621,7 +3717,7 @@ const AppCreator = (defaultprops) => {
   	      }}
   	      key={currentAction}
   	      helperText={
-  	        <span style={{ color: "white", marginBottom: "2px" }}>
+  	        <span style={{ color: theme.palette.text.primary, marginBottom: "2px" }}>
   	          Shows an example body to the user. ${} creates variables.
   	        </span>
   	      }
@@ -3630,7 +3726,8 @@ const AppCreator = (defaultprops) => {
   	          notchedOutline: classes.notchedOutline,
   	        },
   	        style: {
-  	          color: "white",
+  	          color: theme.palette.textFieldStyle.color,
+              backgroundColor: theme.palette.textFieldStyle.backgroundColor,
   	        },
   	      }}
   	    />
@@ -3643,7 +3740,7 @@ const AppCreator = (defaultprops) => {
   	    <b>Example success response</b>
   	    <TextField
   	      required
-  	      style={{ flex: "1", marginRight: "15px", backgroundColor: inputColor }}
+  	      style={{ flex: "1", marginRight: "15px", backgroundColor: theme.palette.textFieldStyle.backgroundColor }}
   	      fullWidth={true}
   	      placeholder={
   	        '{\n\t"email": "testing@test.com",\n\t"firstname": "testing"\n}'
@@ -3655,14 +3752,15 @@ const AppCreator = (defaultprops) => {
   	      defaultValue={currentAction["example_response"]}
   	      onChange={(e) => setActionField("example_response", e.target.value)}
   	      helperText={
-  	        <span style={{ color: "white", marginBottom: "2px" }}>
+  	        <span style={{ color: theme.palette.text.primary, marginBottom: "2px" }}>
   	          Helps with autocompletion and understanding of the endpoint
   	        </span>
   	      }
   	      key={currentAction}
   	      InputProps={{
   	        style: {
-  	          color: "white",
+  	          color: theme.palette.textFieldStyle.color,
+  	          backgroundColor: theme.palette.textFieldStyle.backgroundColor,
   	        },
   	      }}
   	    />
@@ -3737,8 +3835,8 @@ const AppCreator = (defaultprops) => {
     		  fullWidth
 			  PaperProps={{
     		    style: {
-    		      backgroundColor: surfaceColor,
-    		      color: "white",
+    		      backgroundColor: theme.palette.drawer.backgroundColor,
+    		      color: theme.palette.text.primary,
     		      minWidth: 700,
     		      maxWidth: 700,
     		    },
@@ -3755,15 +3853,15 @@ const AppCreator = (defaultprops) => {
 			    setFileUploadEnabled(false);
     		  }}
     		>
-    		  <FormControl style={{ backgroundColor: surfaceColor, color: "white" }}>
+    		  <FormControl style={{ backgroundColor: theme.palette.drawer.backgroundColor, color: theme.palette.text.primary }}>
     		    <DialogTitle style={{marginTop: 45, }}>
-    		      <div style={{ color: "white" }}>New action</div>
+    		      <div style={{ color: theme.palette.text.primary }}>New action</div>
     		    </DialogTitle>
     		    <DialogContent style={{paddingBottom: 100, }}>
     		      <a
     		        target="_blank"
     		        href="https://shuffler.io/docs/app_creation#actions"
-    		        style={{ textDecoration: "none", color: "#f85a3e" }}
+    		        style={{ textDecoration: "none", color: theme.palette.linkColor }}
     		      >
     		        Learn more about actions
     		      </a>
@@ -3775,7 +3873,8 @@ const AppCreator = (defaultprops) => {
     		          flex: "1",
     		          marginTop: 5,
     		          marginRight: 15,
-    		          backgroundColor: inputColor,
+    		          backgroundColor: theme.palette.textFieldStyle.backgroundColor,
+                  color: theme.palette.textFieldStyle.color,
     		        }}
     		        fullWidth={true}
     		        placeholder="Name"
@@ -3800,7 +3899,7 @@ const AppCreator = (defaultprops) => {
 					  if (currentAction.url === "" && actions !== undefined && actions !== null && actions.length > 0) { 
 					    for (var i = 0; i < actions.length; i++) {
 						  if (actions[i].name.toLowerCase() === e.target.value.toLowerCase()) {
-						    toast("Action with name " + e.target.value + " already exists. If you keep this, it will be overwritten.") 
+						    //toast("Action with name " + e.target.value + " already exists. If you keep this, it will be overwritten.") 
 						    break
 						  }
 					    }
@@ -3814,7 +3913,8 @@ const AppCreator = (defaultprops) => {
     		            notchedOutline: classes.notchedOutline,
     		          },
     		          style: {
-    		            color: "white",
+    		            backgroundColor: theme.palette.textFieldStyle.backgroundColor,
+                    color: theme.palette.textFieldStyle.color,
     		          },
     		        }}
     		      />
@@ -3824,9 +3924,10 @@ const AppCreator = (defaultprops) => {
     		        required
     		        style={{
     		          flex: "1",
-    		          marginTop: "5px",
+    		          marginTop: 5,
     		          marginRight: "15px",
-    		          backgroundColor: inputColor,
+    		          backgroundColor: theme.palette.textFieldStyle.backgroundColor,
+                  color: theme.palette.textFieldStyle.color,
     		        }}
     		        fullWidth={true}
     		        placeholder="Description"
@@ -3838,7 +3939,8 @@ const AppCreator = (defaultprops) => {
     		        onChange={(e) => setActionField("description", e.target.value)}
     		        InputProps={{
     		          style: {
-    		            color: "white",
+    		            backgroundColor: theme.palette.textFieldStyle.backgroundColor,
+                    color: theme.palette.textFieldStyle.color,
     		          },
     		        }}
     		      />
@@ -3860,14 +3962,18 @@ const AppCreator = (defaultprops) => {
     		        }}
     		        value={currentActionMethod}
     		        style={{
-    		          backgroundColor: inputColor,
     		          paddingLeft: "10px",
-    		          color: "white",
+    		          backgroundColor: theme.palette.textFieldStyle.backgroundColor,
+                  color: theme.palette.textFieldStyle.color,
     		          height: "50px",
     		        }}
     		        inputProps={{
     		          name: "Method",
     		          id: "method-option",
+                  style: {
+                    backgroundColor: theme.palette.textFieldStyle.backgroundColor,
+                    color: theme.palette.textFieldStyle.color,
+                  },
     		        }}
     		      >
 
@@ -3882,7 +3988,7 @@ const AppCreator = (defaultprops) => {
     		            >
 						  <Chip
 						  	style={{
-						  		color: "white",
+						  		color: theme.palette.text.primary,
 						  		borderRadius: theme.shape.borderRadius,
 						  		minWidth: 80,
 						  		marginRight: 10,
@@ -3906,7 +4012,8 @@ const AppCreator = (defaultprops) => {
     		          flex: "1",
     		          marginRight: "15px",
     		          marginTop: "5px",
-    		          backgroundColor: inputColor,
+    		          backgroundColor: theme.palette.textFieldStyle.backgroundColor,
+                  color: theme.palette.textFieldStyle.color,
     		        }}
     		        fullWidth={true}
     		        placeholder="URL path"
@@ -3919,7 +4026,7 @@ const AppCreator = (defaultprops) => {
     		          setUrlPath(e.target.value);
     		        }}
     		        helperText={
-    		          <span style={{ color: "white", marginBottom: "2px" }}>
+    		          <span style={{ color: theme.palette.text.primary, marginBottom: "2px" }}>
     		            The path to use. Must start with /. Use {"{variablename}"} to
     		            have path variables
     		          </span>
@@ -3930,7 +4037,8 @@ const AppCreator = (defaultprops) => {
     		            input: classes.input,
     		          },
     		          style: {
-    		            color: "white",
+    		            backgroundColor: theme.palette.textFieldStyle.backgroundColor,
+                    color: theme.palette.textFieldStyle.color,
     		          },
     		        }}
     		        onBlur={(event) => {
@@ -3995,22 +4103,22 @@ const AppCreator = (defaultprops) => {
     		              if (request.header !== undefined && request.header !== null) {
     		                var headers = [];
     		                for (let [key, value] of Object.entries(request.header)) {
-													if (value === undefined) {
-														if (key.includes(":")) {
-															const keysplit = key.split(":")
-															key = keysplit[0].trim()
-															value = keysplit[1].trim()
+								if (value === undefined) {
+									if (key.includes(":")) {
+										const keysplit = key.split(":")
+										key = keysplit[0].trim()
+										value = keysplit[1].trim()
 
-														} else if (key.includes("=")) {
-															const keysplit = key.split("=")
-															key = keysplit[0].trim()
-															value = keysplit[1].trim()
+									} else if (key.includes("=")) {
+										const keysplit = key.split("=")
+										key = keysplit[0].trim()
+										value = keysplit[1].trim()
 
-														} else {
-															toast("Removed key: ", key)
-															continue
-														}
-													}
+									} else {
+										toast("Removed key: ", key)
+										continue
+									}
+								}
 
     		                  if (
     		                    parameterName !== undefined &&
@@ -4213,7 +4321,7 @@ const AppCreator = (defaultprops) => {
     		          defaultValue={currentAction["file_field"]}
     		          onChange={(e) => setActionField("file_field", e.target.value)}
     		          helperText={
-    		            <span style={{ color: "white", marginBottom: "2px" }}>
+    		            <span style={{ color: theme.palette.text.primary, marginBottom: "2px" }}>
     		              The File field to interact with
     		            </span>
     		          }
@@ -4222,7 +4330,7 @@ const AppCreator = (defaultprops) => {
     		              notchedOutline: classes.notchedOutline,
     		            },
     		            style: {
-    		              color: "white",
+    		              color: theme.palette.text.primary,
     		            },
     		          }}
     		        />
@@ -4237,7 +4345,8 @@ const AppCreator = (defaultprops) => {
 											flex: "1",
 											marginRight: "15px",
 											marginTop: "5px",
-											backgroundColor: inputColor,
+											backgroundColor: theme.palette.textFieldStyle.backgroundColor,
+                      color: theme.palette.textFieldStyle.color,
 										}}
 										fullWidth={true}
 										placeholder={
@@ -4251,13 +4360,14 @@ const AppCreator = (defaultprops) => {
 										minRows="2"
 										onChange={(e) => setActionField("headers", e.target.value)}
 										helperText={
-											<span style={{ color: "white", marginBottom: "2px" }}>
+											<span style={{ color: theme.palette.text.primary, marginBottom: "2px" }}>
 												Headers that are part of the request. Default: EMPTY
 											</span>
 										}
 										InputProps={{
 											style: {
-												color: "white",
+												backgroundColor: theme.palette.textFieldStyle.backgroundColor,
+                        color: theme.palette.textFieldStyle.color,
 											},
 										}}
 									/>
@@ -4266,22 +4376,21 @@ const AppCreator = (defaultprops) => {
     		      {bodyInfo}
     		      <Divider
     		        style={{
-    		          backgroundColor: "rgba(255,255,255,0.5)",
+    		          backgroundColor: theme.palette.defaultBorder,
     		          marginTop: 15,
     		          marginBottom: 15,
     		        }}
     		      />
     		      {exampleResponse}
     		    </DialogContent>
-    		    <div style={{position: "fixed", backgroundColor: theme.palette.surfaceColor, bottom: 0, width: "100%", padding: 25, borderTop: "1px solid rgba(255,255,255,0.3)", }}>
+    		    <div style={{position: "fixed", backgroundColor: theme.palette.drawer.backgroundColor, bottom: 0, width: "100%", padding: 25, borderTop: theme.palette.defaultBorder, }}>
     		      <Button
     		        color="primary"
     		        variant={urlPath.length > 0 ? "contained" : "outlined"}
     		        style={{ }}
     		        onClick={() => {
-    		          //console.log(urlPathQueries)
-    		          //console.log(urlPath)
     		          console.log(currentAction);
+
     		          const errors = getActionErrors();
     		          addActionToView(errors);
     		          setActionsModalOpen(false);
@@ -4317,7 +4426,8 @@ const AppCreator = (defaultprops) => {
 				>
 					<ErrorOutlineIcon />
 				</Tooltip>
-			) : (
+			) : null
+				{/*
 				<Tooltip
 					color="secondary"
 					title={data.errors.join("\n")}
@@ -4325,7 +4435,7 @@ const AppCreator = (defaultprops) => {
 				>
 					<CheckCircleIcon style={{ marginTop: 6 }} />
 				</Tooltip>
-			);
+				*/}
 
 		var bgColor = "#61afee";
 		if (data.method === "POST") {
@@ -4346,7 +4456,7 @@ const AppCreator = (defaultprops) => {
 				
 		return (
 			<Paper key={index} style={actionListStyle}>
-        {newActionModal}
+        		{newActionModal}
 
 				{error}
 				<Tooltip title="Edit action" placement="bottom">
@@ -4391,7 +4501,7 @@ const AppCreator = (defaultprops) => {
 							<Chip
 								style={{
 									backgroundColor: bgColor,
-									color: "white",
+									color: theme.palette.text.primary,
 									borderRadius: theme.shape.borderRadius,
 									minWidth: 80,
 									marginRight: 10,
@@ -4439,13 +4549,13 @@ const AppCreator = (defaultprops) => {
 									setUpdate(Math.random())
 								}
 							}}
-							value={data.action_label}
+							value={data?.action_label?.replace(" ", "_").toLowerCase()}
 							style={{
 								border: data.action_label === undefined || data.action_label === "No Label" ? "" : `2px solid ${bgColor}`,
 								borderRadius: theme.shape.borderRadius,
-								backgroundColor: inputColor,
+								backgroundColor: theme.palette.backgroundColor,
 								paddingLeft: 10,
-								color: "white",
+								color: theme.palette.text.primary,
 								height: 30,
 								maxWidth: 35, 
 								marginLeft: 10, 
@@ -4461,7 +4571,7 @@ const AppCreator = (defaultprops) => {
 								return (
 									<MenuItem
 										key={labelindex}
-										value={label}
+										value={label.replace(" ", "_").toLowerCase()}
 										style={{ 
 										}}
 									>
@@ -4562,13 +4672,13 @@ const AppCreator = (defaultprops) => {
 
 
   const tagView = (
-    <div style={{ color: "white" }}>
+    <div style={{ color: theme.palette.text.primary }}>
       {/*
 			<ChipInput
 				style={{marginTop: 10}}
 				InputProps={{
 					style:{
-						color: "white",
+						color: theme.palette.text.primary,
 					},
 				}}
 				placeholder="Categories"
@@ -4587,23 +4697,25 @@ const AppCreator = (defaultprops) => {
 				}}
 			/>
 			*/}
-      <h4>Choose a Category</h4>
-      <Select
-        fullWidth
-        SelectDisplayProps={{
-          style: {
-            marginLeft: 10,
-          },
-        }}
-        onChange={(e) => {
-          setNewWorkflowCategories([e.target.value]);
-          setUpdate("added " + e.target.value);
-        }}
-        value={newWorkflowCategories.length === 0 ? "Select a category" : newWorkflowCategories[0]}
-        
-        style={{ backgroundColor: inputColor, color: "white", height: "50px" }}
-      >
-        {categories.map((data, index) => {
+	  <div style={{display: "flex", }}>
+	  	  <div style={{flex: 2, }}>
+			  <h4>Choose a Category</h4>
+			  <Select
+				fullWidth
+				SelectDisplayProps={{
+				  style: {
+					marginLeft: 10,
+				  },
+				}}
+				onChange={(e) => {
+				  setNewWorkflowCategories([e.target.value]);
+				  setUpdate("added " + e.target.value);
+				}}
+				value={newWorkflowCategories.length === 0 ? "Select a category" : newWorkflowCategories[0]}
+				
+				style={{ backgroundColor: theme.palette.backgroundColor, color: theme.palette.text.primary, height: "50px" }}
+			  >
+				{categories.map((data, index) => {
 					if (data === undefined || data === null || data === "" || data === undefined || data === null || data === "") {
 						return null
 					}
@@ -4611,20 +4723,49 @@ const AppCreator = (defaultprops) => {
 					return (
 						<MenuItem
 							key={index}
-							style={{ backgroundColor: inputColor, color: "white" }}
+							sx={{ backgroundColor: theme.palette.backgroundColor, color: theme.palette.text.primary, "&:hover" : { backgroundColor:  theme.palette.hoverColor} }}
 							value={data.name}
 						>
 							{data.name}
 						</MenuItem>
-        	)
+					)
 				})}
-      </Select>
+			  </Select>
+	  	</div>
+	    {/*
+	  	<div style={{flex: 1, marginLeft: 25, }}>
+	  		<Tooltip title="Helps when searching for apps. E.g. Google or Microsoft are their own groups." placement="top">
+	  			<h4 style={{marginBottom: 0, }}>Group</h4>
+	  		</Tooltip>
+	  		<TextField
+	  			style={{ 
+				}}
+	  			fullWidth
+	  			placeholder="Group"
+	  			type="text"
+	  			id="standard-required"
+	  			margin="normal"
+	  			variant="outlined"
+	  			defaultValue={newAppGroup}
+	  			onChange={(e) => {
+	  				setNewAppGroup(e.target.value)
+	  				setUpdate("group added "+e.target.value)
+	  			}}
+	  			InputProps={{
+	  				style: {
+	  					color: theme.palette.text.primary,
+	  				},
+	  			}}
+	  		/>
+	  	</div>
+		*/}
+	  </div>
       <h4>Tags</h4>
       <MuiChipsInput
         style={{ marginTop: 10 }}
         InputProps={{
           style: {
-            color: "white",
+            color: theme.palette.text.primary,
           },
         }}
         placeholder="Tags"
@@ -4693,11 +4834,11 @@ const AppCreator = (defaultprops) => {
           <TextField
             style={{
               backgroundColor: inputColor,
-              borderRadius: theme.palette.borderRadius,
+              borderRadius: theme.palette?.borderRadius,
             }}
             InputProps={{
               style: {
-                color: "white",
+                color: theme.palette.text.primary,
                 height: 50,
                 fontSize: "1em",
               },
@@ -5012,7 +5153,7 @@ const AppCreator = (defaultprops) => {
 
         /*
 					{selectedAction.authentication.map(data => (
-					<MenuItem key={data.id} style={{backgroundColor: inputColor, color: "white"}} value={data}>
+					<MenuItem key={data.id} style={{backgroundColor: inputColor, color: theme.palette.text.primary}} value={data}>
 				*/
       };
 
@@ -5031,7 +5172,7 @@ const AppCreator = (defaultprops) => {
               target="_blank"
               rel="norefferer"
               href="https://shuffler.io/docs/app_creation#authentication"
-              style={{ textDecoration: "none", color: "#f85a3e" }}
+              style={{ textDecoration: "none", color: theme.palette.linkColor }}
             >
               What is this?
             </a>
@@ -5042,11 +5183,11 @@ const AppCreator = (defaultprops) => {
             <TextField
               style={{
                 backgroundColor: inputColor,
-                borderRadius: theme.palette.borderRadius,
+                borderRadius: theme.palette?.borderRadius,
               }}
               InputProps={{
                 style: {
-                  color: "white",
+                  color: theme.palette.text.primary,
                   marginLeft: "5px",
                   maxWidth: "95%",
                   height: 50,
@@ -5082,11 +5223,11 @@ const AppCreator = (defaultprops) => {
                   <TextField
                     style={{
                       backgroundColor: inputColor,
-                      borderRadius: theme.palette.borderRadius,
+                      borderRadius: theme.palette?.borderRadius,
                     }}
                     InputProps={{
                       style: {
-                        color: "white",
+                        color: theme.palette.text.primary,
                         marginLeft: "5px",
                         maxWidth: "95%",
                         height: 50,
@@ -5136,7 +5277,7 @@ const AppCreator = (defaultprops) => {
   };
 
   const actionView = (
-    <div style={{ color: "white", position: "relative" }}>
+    <div style={{ color: theme.palette.text.primary, position: "relative" }}>
       <div style={{ position: "absolute", right: 0, top: 0 }}>
         {actionAmount > 0 && actionAmount < filteredActions.length ? (
           <Button
@@ -5188,15 +5329,14 @@ const AppCreator = (defaultprops) => {
                 key={index}
                 style={{
                   backgroundColor:
-                    tag === selectedCategory ? "#f86a3e" : "#3d3f43",
+                    tag === selectedCategory ? "#f86a3e" : theme.palette.chipStyle.backgroundColor,
                   height: 30,
                   margin: 3,
                   paddingLeft: 5,
                   paddingRight: 5,
-                  height: 28,
                   cursor: "pointer",
-                  borderColor: "#3d3f43",
-                  color: "white",
+                  borderColor: theme.palette.chipStyle.borderColor,
+                  color: theme.palette.chipStyle.color,
                 }}
                 label={newname}
                 onClick={() => {
@@ -5322,13 +5462,13 @@ const AppCreator = (defaultprops) => {
   );
 
   const testView = (
-    <div style={{ color: "white" }}>
+    <div style={{ color: theme.palette.text.primary }}>
       <h2>Test</h2>
       Test an action to see whether it performs in an expected way.
       <a
         target="_blank"
         href="https://shuffler.io/docs/app_creation#testing"
-        style={{ textDecoration: "none", color: "#f85a3e" }}
+        style={{ textDecoration: "none", color: theme.palette.linkColor }}
       >
         &nbsp;TBD: Click here to learn more about testing
       </a>
@@ -5406,6 +5546,7 @@ const AppCreator = (defaultprops) => {
         minWidth: 174,
         minHeight: 174,
         objectFit: "contain",
+		borderRadius: theme.palette?.borderRadius,
       }}
     />
   );
@@ -5421,6 +5562,7 @@ const AppCreator = (defaultprops) => {
         margin: "auto",
         marginTop: 30,
         marginLeft: 40,
+		borderRadius: theme.palette?.borderRadius,
       }}
       onClick={() => {
         upload.click();
@@ -5481,7 +5623,7 @@ const AppCreator = (defaultprops) => {
       PaperProps={{
         style: {
           backgroundColor: surfaceColor,
-          color: "white",
+          color: theme.palette.text.primary,
           minWidth: "300px",
           minHeight: "300px",
         },
@@ -5630,7 +5772,7 @@ const AppCreator = (defaultprops) => {
       PaperProps={{
         style: {
           backgroundColor: surfaceColor,
-          color: "white",
+          color: theme.palette.text.primary,
           minWidth: "800px",
           minHeight: "320px",
         },
@@ -5650,7 +5792,7 @@ const AppCreator = (defaultprops) => {
             margin="normal"
             InputProps={{
               style: {
-                color: "white",
+                color: theme.palette.text.primary,
                 height: "50px",
                 fontSize: "1em",
               },
@@ -5677,7 +5819,7 @@ const AppCreator = (defaultprops) => {
               setOpenApi(e.target.value);
             }}
             helperText={
-              <span style={{ color: "white", marginBottom: "2px" }}>
+              <span style={{ color: theme.palette.text.primary, marginBottom: "2px" }}>
                 Must point to a version 2 or 3 OpenAPI specification.
               </span>
             }
@@ -5741,20 +5883,22 @@ const AppCreator = (defaultprops) => {
 
   // Random names for type & autoComplete. Didn't research :^)
   const landingpageDataBrowser = (
-    <div style={{ paddingBottom: 100, color: "white" }}>
+    <div style={{ paddingBottom: 100, color: theme.palette.text.primary, }}>
       <Breadcrumbs
         aria-label="breadcrumb"
         separator="›"
-        style={{ color: "white" }}
+        style={{ color: theme.palette.text.primary }}
       >
         <Link to="/apps" style={{ textDecoration: "none", color: "inherit" }}>
-          <h2 style={{ color: "rgba(255,255,255,0.5)" }}>
+          <h2 style={{ color: theme.palette.textColor }}>
             <AppsIcon style={{ marginRight: 10 }} />
             Apps
           </h2>
         </Link>
         <h2>
-          {name}{" "}
+	  	  <Link to={props?.match?.params?.appid !== undefined && props?.match?.params?.appid !== null && props?.match?.params?.appid.length > 0 ? `/apps/${props?.match?.params?.appid}` : "/apps" } style={{ textDecoration: "none", color: theme.palette.text.primary }}>
+          	{name}{" "}
+	  	  </Link>
           {actions === null ||
           actions === undefined ||
           actions.length === 0 ? null : (
@@ -5769,26 +5913,45 @@ const AppCreator = (defaultprops) => {
         ref={(ref) => (upload = ref)}
         onChange={editHeaderImage}
       />
-      <Paper style={boxStyle}>
+      <div style={boxStyle}>
 	  	<div style={{display: "flex", }}>
 			<div style={{flex: 1, }}>
-				<h2 style={{ marginBottom: "10px", color: "white" }}>
+				<h2 style={{ marginBottom: "10px", color: theme.palette.text.primary }}>
 				  General information
 				</h2>
 			</div>
-			<div style={{flex: 1, itemAlign: "right", textAlign: "right",}}>
-          		<Tooltip title="Merge with another API (coming soon)" placement="bottom">
-					<IconButton
-						disabled
+			<div style={{flex: 1, itemAlign: "right", textAlign: "right", marginRight: 10, }}>
+          		<Tooltip title="Try the API" placement="bottom">
+					<Button
+	  					variant="outlined"
+	  					color="secondary"
 						onClick={() => {
-							setOpenApiModal(true)
+    						var urlParams = new URLSearchParams(window.location.search)
+							if (urlParams.has("id")) {
+								window.open(`/apis/${urlParams.get("id")}`, "_blank")
+							} else if (props.match.params.appid !== undefined && props.match.params.appid !== null && props.match.params.appid.length > 0) {
+								window.open(`/apis/${props.match.params.appid}`, "_blank")
+							} else {
+								toast.error("Build the app first.")
+							}
+
 						}}
+					>
+  						<OpenInNewIcon style={{marginRight: 5, }}/>
+	  					Try the API
+					</Button>
+				</Tooltip>
+          		<Tooltip title="Manage forks and Merge with another API (coming soon)" placement="bottom">
+					<IconButton
+						onClick={() => {
+							//setOpenApiModal(true)
+							toast.info("Action merging & fork management coming soon")
+						}}
+	  					disabled={true}
+	  					style={{marginLeft: 10, }}
 					>
 						<CallMergeIcon 
 							style={{}} 
-							onClick={() => {
-								setOpenApiModal(true)
-							}}
 						/>
 					</IconButton>
 				</Tooltip>
@@ -5797,13 +5960,13 @@ const AppCreator = (defaultprops) => {
         <a
           target="_blank"
           href="https://shuffler.io/docs/app_creation#app-creator-instructions"
-          style={{ textDecoration: "none", color: "#f85a3e" }}
+          style={{ textDecoration: "none", color: theme.palette.linkColor }}
         >
-          Click here to learn more about app creation
+          Click to learn more about app creation
         </a>
         <div
           style={{
-            color: "white",
+            color: theme.palette.text.primary,
             flex: "1",
             display: "flex",
             flexDirection: "row",
@@ -5815,18 +5978,13 @@ const AppCreator = (defaultprops) => {
                 flex: "1",
                 margin: 10,
                 border: "1px solid #f85a3e",
+				borderRadius: theme.palette?.borderRadius,
                 cursor: "pointer",
                 backgroundColor: inputColor,
                 maxWidth: 174,
                 maxHeight: 174,
               }}
               onClick={() => {
-                /*
-									if (fileBase64.length === 0) {
-										upload.click()
-									}
-									*/
-
                 setOpenImageModal(true);
               }}
             >
@@ -5839,7 +5997,7 @@ const AppCreator = (defaultprops) => {
               />
             </div>
           </Tooltip>
-          <div style={{ flex: "3", color: "white" }}>
+          <div style={{ flex: "3", color: theme.palette.text.primary, marginLeft: 20, }}>
             <div style={{ marginTop: "10px" }} />
             Name
             <TextField
@@ -5848,7 +6006,7 @@ const AppCreator = (defaultprops) => {
                 flex: "1",
                 marginTop: "5px",
                 marginRight: "15px",
-                backgroundColor: inputColor,
+                backgroundColor: theme.palette.textFieldStyle.backgroundColor,
               }}
               fullWidth={true}
               placeholder="Name"
@@ -5884,7 +6042,8 @@ const AppCreator = (defaultprops) => {
               color="primary"
               InputProps={{
                 style: {
-                  color: "white",
+                  color: theme.palette.textFieldStyle.color,
+                  backgroundColor: theme.palette.textFieldStyle.backgroundColor,
                   height: "50px",
                   fontSize: "1em",
                 },
@@ -5893,35 +6052,33 @@ const AppCreator = (defaultprops) => {
                 },
               }}
             />
-            <div style={{ marginTop: "10px" }} />
+            <div style={{ marginTop: 10, }} />
             Description
             <TextField
               required
               style={{
-                flex: "1",
-                marginTop: "5px",
-                marginRight: "15px",
-                backgroundColor: inputColor,
-								maxHeight: 250,
-								overflow: "auto",
+				marginTop: 5, 
+                marginRight: 15,
+                backgroundColor: theme.palette.textFieldStyle.backgroundColor,
+				maxHeight: 250,
+				overflowY: "auto"
               }}
               fullWidth={true}
               type="name"
               id="outlined-with-placeholder"
+              inputProps={{
+                style: {
+                  color: theme.palette.textFieldStyle.color,
+                  backgroundColor: theme.palette.textFieldStyle.backgroundColor,
+                }
+              }}
               margin="normal"
-							multiline
+			  multiline
               variant="outlined"
               placeholder="A description for the service"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              InputProps={{
-                classes: {
-                  notchedOutline: classes.notchedOutline,
-                },
-                style: {
-                  color: "white",
-                },
-              }}
+              defaultValue={description}
+              //onChange={(e) => setDescription(e.target.value)}
+              onBlur={(e) => setDescription(e.target.value)}
             />
           </div>
         </div>
@@ -5936,7 +6093,7 @@ const AppCreator = (defaultprops) => {
         />
         <Typography
           variant="h6"
-          style={{ marginTop: 10, marginBottom: 10, color: "white" }}
+          style={{ marginTop: 10, marginBottom: 10, color: theme.palette.text.primary }}
         >
           API information
         </Typography>
@@ -5945,14 +6102,15 @@ const AppCreator = (defaultprops) => {
         </Typography>
         <TextField
           color="primary"
-          style={{ backgroundColor: inputColor, marginTop: "5px" }}
+          style={{ backgroundColor: theme.palette.textFieldStyle.backgroundColor, marginTop: "5px" }}
           InputProps={{
             classes: {
               notchedOutline: classes.notchedOutline,
             },
             style: {
               height: "50px",
-              color: "white",
+              color: theme.palette.textFieldStyle.color,
+              backgroundColor: theme.palette.textFieldStyle.backgroundColor,
               fontSize: "1em",
             },
           }}
@@ -5964,8 +6122,8 @@ const AppCreator = (defaultprops) => {
           variant="outlined"
           value={baseUrl}
           helperText={
-            <span style={{ color: "white", marginBottom: "2px" }}>
-              Must start with http(s):// and CANT end with /.{" "}
+            <span style={{ color: theme.palette.text.primary, marginBottom: "2px" }}>
+              Must start with http(s):// and can NOT end with /.{" "}
             </span>
           }
           placeholder="https://api.example.com"
@@ -5984,24 +6142,24 @@ const AppCreator = (defaultprops) => {
               toast("URL must start with http(s)://");
             }
 
-						if (tmpstring.includes("?")) {
-							var newtmp = tmpstring.split("?")
-							if (tmpstring.length > 1) {
-								tmpstring = newtmp[0]
-							}
-						}
+			if (tmpstring.includes("?")) {
+				var newtmp = tmpstring.split("?")
+				if (tmpstring.length > 1) {
+					tmpstring = newtmp[0]
+				}
+			}
 
             setBaseUrl(tmpstring);
           }}
         />
-				<div style={{padding: 25, border: "2px solid rgba(255,255,255,0.7)", borderRadius: theme.palette.borderRadius, }}>
+				<div style={{padding: 25, border: "2px solid rgba(255,255,255,0.7)", borderRadius: theme.palette?.borderRadius, }}>
 	  				<span style={{display: "flex", }}>
 					<FormControl style={{ }} variant="outlined">
 						<Typography variant="h6">Authentication</Typography>
 						<a
 							target="_blank"
 							href="https://shuffler.io/docs/app_creation#authentication"
-							style={{ textDecoration: "none", color: "#f85a3e" }}
+							style={{ textDecoration: "none", color: theme.palette.linkColor }}
 						>
 							Learn more about app authentication
 						</a>
@@ -6025,15 +6183,15 @@ const AppCreator = (defaultprops) => {
 							}}
 							value={authenticationOption}
 							style={{
-								backgroundColor: inputColor,
-								color: "white",
+								backgroundColor: theme.palette.backgroundColor,
+								color: theme.palette.text.primary,
 								height: "50px",
 							}}
 						>
 							{authenticationOptions.map((data, index) => (
 								<MenuItem
 									key={index}
-									style={{ backgroundColor: inputColor, color: "white" }}
+									sx={{ backgroundColor: theme.palette.backgroundColor, color: theme.palette.text.primary, "&:hover": {backgroundColor: theme.palette.backgroundColor} }}
 									value={data}
 								>
 									{data}
@@ -6068,14 +6226,14 @@ const AppCreator = (defaultprops) => {
 									value={oauth2Type}
 									style={{
 										backgroundColor: inputColor,
-										color: "white",
+										color: theme.palette.text.primary,
 										height: "50px",
 									}}
 								>
 									{["delegated", "application"].map((data, index) => (
 										<MenuItem
 											key={index}
-											style={{ backgroundColor: inputColor, color: "white" }}
+											style={{ backgroundColor: inputColor, color: theme.palette.text.primary }}
 											value={data}
 										>
 											{data}
@@ -6096,14 +6254,14 @@ const AppCreator = (defaultprops) => {
 										value={oauth2GrantType}
 										style={{
 											backgroundColor: inputColor,
-											color: "white",
+											color: theme.palette.text.primary,
 											height: "50px",
 										}}
 									>
 										{["client_credentials", "password"].map((data, index) => (
 											<MenuItem
 												key={index}
-												style={{ backgroundColor: inputColor, color: "white" }}
+												style={{ backgroundColor: inputColor, color: theme.palette.text.primary }}
 												value={data}
 											>
 												{data}
@@ -6128,8 +6286,8 @@ const AppCreator = (defaultprops) => {
 
         {/*authenticationOption === "No authentication" ? null :
 						<FormControlLabel
-							style={{color: "white", marginBottom: 0, marginTop: 20}}
-							label=<div style={{color: "white"}}>Authentication required (default true)</div>
+							style={{color: theme.palette.text.primary, marginBottom: 0, marginTop: 20}}
+							label=<div style={{color: theme.palette.text.primary}}>Authentication required (default true)</div>
 							control={<Switch checked={authenticationRequired} onChange={() => {
 								setAuthenticationRequired(!authenticationRequired)
 							}} />}
@@ -6161,69 +6319,70 @@ const AppCreator = (defaultprops) => {
 						{testView}
 					*/}
 
-	  	<div style={{display: "flex", marginTop: 35, }}>
-			{appDownloadData.length > 0 ?
-				<Tooltip title="Download the OpenAPI specification for the App" placement="bottom">
-					<IconButton
-						style={{marginRight: 25, }} 
-						onClick={() => {
-							toast(`Downloading OpenAPI JSON data for for ${name}`)
-							// Download as file
-          					var blob = new Blob([appDownloadData], {
-          					  type: "application/octet-stream",
-          					});
+	  	<div style={{height: isCloud ? 50 : 80, padding: 15, display: "flex", marginTop: 35, position: "fixed", bottom: 0, left: 0, width: "100%", backgroundColor: theme.palette?.backgroundColor, borderTop: "1px solid rgba(255,255,255,0.3)",}}>
+	  		<div style={{width: 450, margin: "auto", display: "flex", textAlign: "center", }}>
+				{appDownloadData.length > 0 ?
+					<Tooltip title="Download the OpenAPI specification for the App" placement="bottom">
+						<IconButton
+							style={{marginRight: 25, }} 
+							onClick={() => {
+								toast(`Downloading OpenAPI JSON data for for ${name}`)
+								// Download as file
+								var blob = new Blob([appDownloadData], {
+								  type: "application/octet-stream",
+								});
 
-          					var url = URL.createObjectURL(blob);
-							var link = document.createElement("a");
-						    link.setAttribute("href", url);
-						    link.setAttribute("download", `${name}.json`);
-						    var event = document.createEvent("MouseEvents");
-						    event.initMouseEvent(
-						      "click",
-						      true,
-						      true,
-						      window,
-						      1,
-						      0,
-						      0,
-						      0,
-						      0,
-						      false,
-						      false,
-						      false,
-						      false,
-						      0,
-						      null
-						    );
-						    link.dispatchEvent(event);
-						}}
-					>
-						<CloudDownloadIcon />
-					</IconButton>
-				</Tooltip>
-			: null}
-			<Button
-			  disabled={appBuilding}
-			  color="primary"
-			  variant="contained"
-	  		  fullWidth
-			  style={{ height: "50px", flex: 1,  }}
-			  onClick={() => {
-				submitApp();
-			  }}
-			>
-			  {appBuilding ? <CircularProgress /> : "Save"}
-			</Button>
-	  		{appDownloadData.length > 0 ?
-				<div style={{width: 50, }}/>
-			: null}
+								var url = URL.createObjectURL(blob);
+								var link = document.createElement("a");
+								link.setAttribute("href", url);
+								link.setAttribute("download", `${name}.json`);
+								var event = document.createEvent("MouseEvents");
+								event.initMouseEvent(
+								  "click",
+								  true,
+								  true,
+								  window,
+								  1,
+								  0,
+								  0,
+								  0,
+								  0,
+								  false,
+								  false,
+								  false,
+								  false,
+								  0,
+								  null
+								);
+								link.dispatchEvent(event);
+							}}
+						>
+							<CloudDownloadIcon />
+						</IconButton>
+					</Tooltip>
+				: null}
+				<Button
+				  disabled={appBuilding}
+				  color="primary"
+				  variant="contained"
+				  style={{ height: 50, flex: 1, minWidth: 400, maxWidth: 400, }}
+				  onClick={() => {
+					submitApp();
+				  }}
+				>
+				  {appBuilding ? <CircularProgress /> : "Save API"}
+				</Button>
+				{appDownloadData.length > 0 ?
+					<div style={{width: 50, }}/>
+				: null}
+	  		</div>
 	  	</div>
 
 		<Typography style={{ marginTop: 25, textAlign: "center", }}>
 		  {errorCode.length > 0 ? `Upload Error: ${errorCode}` : null}
 		</Typography>
 
-      </Paper>
+      </div>
     </div>
   );
 

@@ -1,4 +1,4 @@
-FROM golang:1.22 as builder
+FROM golang:1.24 as builder
 
 WORKDIR /app
 #RUN go get github.com/docker/docker/api/types github.com/docker/docker/api/types/container github.com/docker/docker/client
@@ -9,7 +9,8 @@ COPY go.mod /app/go.mod
 #COPY go.sum /app/go.sum
 #RUN go
 #COPY go.sum /app/go.sum
-RUN go get
+RUN go mod download 
+RUN go mod tidy 
 
 #RUN go mod init worker
 #RUN go get
@@ -23,11 +24,11 @@ RUN go get
 #	go get github.com/fsouza/go-dockerclient && \
 #	go get google.golang.org/grpc/balancer/grpclb@v1.37.1
 
-RUN go build
+#RUN go build
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o worker .
 
 ## ALPINE IMAGE
-FROM alpine:3.15.0
+FROM alpine:3.22.1
 
 ENV SHUFFLE_BASE_IMAGE_REGISTRY=docker.io
 ENV SHUFFLE_BASE_IMAGE_NAME=frikky/shuffle

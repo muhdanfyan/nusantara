@@ -25,25 +25,28 @@ services:
     extends:
       file: docker-compose.base.yml
       service: db
-    image: ghcr.io/dfir-iris/iriswebapp_db:v2.4.19
+    image: ${DB_IMAGE_NAME:-ghcr.io/dfir-iris/iriswebapp_db}:${DB_IMAGE_TAG:-v2.4.20}
+
 
   app:
     extends:
       file: docker-compose.base.yml
       service: app
-    image: ghcr.io/dfir-iris/iriswebapp_app:v2.4.19
+    image: ${APP_IMAGE_NAME:-ghcr.io/dfir-iris/iriswebapp_app}:${APP_IMAGE_TAG:-v2.4.20}
 
   worker:
     extends:
       file: docker-compose.base.yml
       service: worker
-    image: ghcr.io/dfir-iris/iriswebapp_app:v2.4.19
+    image: ${APP_IMAGE_NAME:-ghcr.io/dfir-iris/iriswebapp_app}:${APP_IMAGE_TAG:-v2.4.20}
+
 
   nginx:
     extends:
       file: docker-compose.base.yml
       service: nginx
-    image: ghcr.io/dfir-iris/iriswebapp_nginx:v2.4.19
+    image: ${NGINX_IMAGE_NAME:-ghcr.io/dfir-iris/iriswebapp_nginx}:${NGINX_IMAGE_TAG:-v2.4.20}
+
 
 volumes:
   iris-downloads:
@@ -56,6 +59,4 @@ networks:
     name: iris_backend
   iris_frontend:
     name: iris_frontend
-  shared-network:
-    external: true
 
