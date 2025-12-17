@@ -19,9 +19,6 @@
 import binascii
 from sqlalchemy import and_
 
-from sqlalchemy import exists
-from sqlalchemy import select
-
 from app import db
 from app.datamgmt.manage.manage_tags_db import add_db_tag
 from app.models.authorization import User
@@ -54,19 +51,18 @@ def get_case(caseid) -> Cases:
     return Cases.query.filter(Cases.case_id == caseid).first()
 
 
-def case_db_exists(identifier):
-    stmt = select(exists().where(Cases.case_id == identifier))
-    return db.session.scalar(stmt)
+def case_exists(caseid):
+    return Cases.query.filter(Cases.case_id == caseid).count()
 
 
 def get_case_client_id(caseid):
-    customer = Cases.query.with_entities(
+    client_id = Cases.query.with_entities(
         Client.client_id
     ).filter(
         Cases.case_id == caseid
     ).join(Cases.client).first()
 
-    return customer.client_id
+    return client_id.client_id
 
 
 def case_get_desc(caseid):
@@ -114,7 +110,7 @@ def get_case_report_template():
         Languages.name,
         CaseTemplateReport.description
     ).filter(and_(
-        Languages.id == CaseTemplateReport.language_id,
+        Languages.id == CaseTemplateReport.report_type_id,
         ReportType.name == "Investigation"
     )).join(
         CaseTemplateReport.report_type
@@ -157,11 +153,7 @@ def get_activities_report_template():
     ).filter(and_(
         ReportType.name == "Activities",
         Languages.id == CaseTemplateReport.language_id
-    )).outerjoin(
-        CaseTemplateReport.report_type
-    ).outerjoin(
-        CaseTemplateReport.language
-    ).all()
+    )).all()
 
     return reports
 

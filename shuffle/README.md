@@ -8,17 +8,13 @@ Shuffle Automation
 
 [Shuffle](https://shuffler.io) is an open source automation platform, built for and by the security professionals. Security operations is complex, but it doesn't have to be. Built to work well with MSSP's and other service providers in mind.
 
-[ Get training ](https://shuffler.io/training)
 [_Key Features_](https://shuffler.io/docs/features) —
 [_Community & Support_](https://discord.gg/B2CBzUm) —
 [ Get training ](https://shuffler.io/training) -
 [_Documentation_](https://shuffler.io/docs) —
-[_Getting Started_](https://shuffler.io/docs/getting_started) —
-[_Development_](https://github.com/shuffle/Shuffle/blob/master/.github/CONTRIBUTING.md) 
-[ Set up a demo call ](https://shuffler.io/contact)
+[_Getting Started_](https://shuffler.io/docs/getting_started)
 
 Follow us on Twitter at [@shuffleio](https://twitter.com/shuffleio).
-
 
 </h4>
 
@@ -26,7 +22,7 @@ Follow us on Twitter at [@shuffleio](https://twitter.com/shuffleio).
 
 ## Try it
 * Self-hosted: Check out the [installation guide](https://github.com/shuffle/shuffle/blob/master/.github/install-guide.md)
-* Cloud: Register at https://shuffler.io/register and get cooking
+* Cloud: Register at https://shuffler.io/register and get cooking (missing a lot of features)
 
 Please consider [sponsoring](https://github.com/sponsors/frikky) the project if you want to see more rapid development.
 
@@ -103,9 +99,6 @@ Apps, specification and App SDK: MIT
 
 ## Architecture
 ![Shuffle Architecture](https://github.com/shuffle/Shuffle/blob/main/frontend/src/assets/img/shuffle_architecture.png)
-
-## Security Contributors: Hall of Fame
-[Pushpraj](https://github.com/PushprajPatil) - Reported several issues between July and August 2024
 
 ### Repository overview 
 Below is the folder structure with a short explanation

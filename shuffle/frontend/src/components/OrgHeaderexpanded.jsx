@@ -55,10 +55,6 @@ const OrgHeaderexpanded = (props) => {
 		globalUrl,
 		isCloud,
 		adminTab,
-
-		selectedStatus,
-		setSelectedStatus,
-		isEditOrgTab
 	} = props;
 
 	const classes = useStyles();
@@ -173,11 +169,6 @@ const OrgHeaderexpanded = (props) => {
 				: selectedOrganization.sso_config.openid_token
 	)
 
-	const [uploadRepo, setUploadRepo] = React.useState(selectedOrganization.defaults === undefined ? "" : selectedOrganization.defaults.workflow_upload_repo === undefined || selectedOrganization.defaults.workflow_upload_repo.length === 0 ? "" : selectedOrganization.defaults.workflow_upload_repo)
-	const [uploadBranch, setUploadBranch] = React.useState(selectedOrganization.defaults === undefined ? defaultBranch : selectedOrganization.defaults.workflow_upload_branch === undefined || selectedOrganization.defaults.workflow_upload_branch.length === 0 ? defaultBranch : selectedOrganization.defaults.workflow_upload_branch)
-	const [uploadUsername, setUploadUsername] = React.useState(selectedOrganization.defaults === undefined ? "" : selectedOrganization.defaults.workflow_upload_username === undefined || selectedOrganization.defaults.workflow_upload_username.length === 0 ? "" : selectedOrganization.defaults.workflow_upload_username)
-	const [uploadToken, setUploadToken] = React.useState(selectedOrganization.defaults === undefined ? "" : selectedOrganization.defaults.workflow_upload_token === undefined || selectedOrganization.defaults.workflow_upload_token.length === 0 ? "" : selectedOrganization.defaults.workflow_upload_token)
-
 	const [workflows, setWorkflows] = React.useState([])
 	const [workflow, setWorkflow] = React.useState({})
 
@@ -227,7 +218,7 @@ const OrgHeaderexpanded = (props) => {
 		defaults,
 		sso_config
 	) => {
-console.log("defatult in handleEditOrg", defaults)
+
 		const data = {
 			name: name,
 			description: description,
@@ -308,8 +299,7 @@ console.log("defatult in handleEditOrg", defaults)
 								client_secret: openidClientSecret,
 								openid_authorization: openidAuthorization,
 								openid_token: openidToken,
-								SSORequired: SSORequired,
-								auto_provision: selectedOrganization?.sso_config?.auto_provision,
+								SSORequired: SSORequired
 							}
 						)
 					}
@@ -320,71 +310,18 @@ console.log("defatult in handleEditOrg", defaults)
 		</Tooltip>
 	);
 
-  const toggleBetweenRequiredOrOptional = (event) => {
-    if (
-      ssoEntrypoint === "" &&
-      openidAuthorization === "" &&
-      openidToken === ""
-    ) {
-      if (!SSORequired) {
-        toast.error(
-          "Please fill in fields for either OpenID connect or SSO before continuing. "
-        );
-        return;
-      }
-    } else {
-      toast.info("Toggled SSO. Remember to save.");
-    }
+	const toggleBetweenRequiredOrOptional = (event) => {
+		if (ssoEntrypoint === "" && openidAuthorization === "" && openidToken === "") {
+			if (!SSORequired) {
+				toast.error("Please fill in fields for either OpenID connect or SSO before continuing. ")
+				return
+			}
+		} else {
+			toast.info("Toggled SSO. Remember to save.")
+		}
 
-    setSSORequired(event.target.checked);
-  };
-
-  const HandleTestSSO = () => {
-    const url = `${globalUrl}/api/v1/orgs/${selectedOrganization?.id}/change`;
-    const data = {
-      org_id: selectedOrganization?.id,
-      sso_test: true,
-    };
-
-    fetch(url, {
-      mode: "cors",
-      credentials: "include",
-      crossDomain: true,
-      method: "POST",
-      body: JSON.stringify(data),
-      withCredentials: true,
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-      },
-    })
-      .then((response) => {
-        if (response.status !== 200) {
-          toast.error(
-            "Failed to test sso. Please try again later or contact support@shuffler.io if issue persist."
-          );
-          return;
-        }
-        return response.json();
-      })
-      .then((responjson) => {
-        if (responjson["reason"] === "SSO_REDIRECT") {
-          setTimeout(() => {
-            toast.info(
-              "Redirecting to SSO login page as SSO is required for this organization."
-            );
-            window.location.href = responjson["url"];
-            return;
-          }, 2000);
-        } else {
-          toast.error(
-            "No SSO found for this org. Please set up sso for this org."
-          );
-        }
-      })
-      .catch((err) => {
-        console.log("error for sso test is: ", err);
-      })
-    }
+		setSSORequired(event.target.checked)
+	};
 
 	return (
 		<div style={{ textAlign: "center" }}>
@@ -439,7 +376,7 @@ console.log("defatult in handleEditOrg", defaults)
 									style={{
 										backgroundColor: theme.palette.inputColor,
 										height: 50,
-										borderRadius: theme.palette?.borderRadius,
+										borderRadius: theme.palette.borderRadius,
 									}}
 									onChange={(event, newValue) => {
 										console.log("Found value: ", newValue)
@@ -471,7 +408,7 @@ console.log("defatult in handleEditOrg", defaults)
 											<Tooltip arrow placement="left" title={
 												<span style={{}}>
 													{data.image !== undefined && data.image !== null && data.image.length > 0 ?
-														<img src={data.image} alt={data.name} style={{ backgroundColor: theme.palette.surfaceColor, maxHeight: 200, minHeigth: 200, borderRadius: theme.palette?.borderRadius, }} />
+														<img src={data.image} alt={data.name} style={{ backgroundColor: theme.palette.surfaceColor, maxHeight: 200, minHeigth: 200, borderRadius: theme.palette.borderRadius, }} />
 														: null}
 													<Typography>
 														Choose {data.name}
@@ -486,7 +423,6 @@ console.log("defatult in handleEditOrg", defaults)
 													value={data}
 													onClick={(e) => {
 														var parsedinput = { target: { value: data } }
-														console.log("Parsed input: ", parsedinput)
 														handleWorkflowSelectionUpdate(parsedinput)
 													}}
 												>
@@ -500,7 +436,7 @@ console.log("defatult in handleEditOrg", defaults)
 											<TextField
 												style={{
 													backgroundColor: theme.palette.inputColor,
-													borderRadius: theme.palette?.borderRadius,
+													borderRadius: theme.palette.borderRadius,
 												}}
 												{...params}
 												label="Find a notification workflow"
@@ -576,39 +512,54 @@ console.log("defatult in handleEditOrg", defaults)
 						/>
 					</span>
 				</Grid>
-
-				<Grid item xs={12} style={{ marginTop: 50, }}>
-					<Typography variant="h4" style={{ textAlign: "left", }}>Workflow Backup Repository</Typography>
-					<Typography variant="body2" style={{ textAlign: "left", marginTop: 5, }} color="textSecondary">
-						Decide where workflows are backed up in a Git repository. Will create logs and notifications if upload fails. The repository and branch must already have been initialized. Files will show up in the root folder in the format 'status_workflowid.json'
-					</Typography>
-					<Grid container style={{ marginTop: 10, }} spacing={2}>
+				{/* {isCloud ? null : */}
+				<Typography variant="h4" style={{ textAlign: "left", marginTop: 75, marginLeft: 20, }}>Single Signon - SAML/OpenID</Typography>
+				<div style={{ display: 'flex', flexDirection: 'column', marginTop: 20, marginLeft: 10, width: '100%', borderBottom: '1px solid #414347' }}>
+					<Typography variant="body1" style={{ margin: '5px 0px 5px 10px' }}>Make SAML SSO or OpenID Authentication required/optional for your organization. Tip: Do not make it required until you have tested the URL directly.</Typography>
+					<div>
+						<Switch
+							checked={SSORequired}
+							onChange={(e) => {
+								toggleBetweenRequiredOrOptional(e)
+							}}
+							name="onOffSwitch"
+							color="primary"
+							title="Make SAML SSO or OpenID Authentication Required or Optional for Your Organization"
+						/>
+						{SSORequired ? 'Required' : 'Optional'}
+					</div>
+				</div>
+				<div>
+				</div>
+				<Grid item xs={12} style={{}}>
+					<Typography variant="h6" style={{ textAlign: "left", }}>OpenID connect</Typography>
+					<Grid container style={{ marginTop: 10, }}>
 						<Grid item xs={6} style={{}}>
 							<span>
-								<Typography>Repository for workflow backup</Typography>
+								<Typography>Client ID</Typography>
 								<TextField
 									required
 									style={{
 										flex: "1",
 										marginTop: "5px",
 										marginRight: "15px",
-										backgroundColor: isEditOrgTab ? "rgba(33, 33, 33, 1)" : theme.palette.inputColor,
+										backgroundColor: theme.palette.inputColor,
 									}}
 									fullWidth={true}
 									type="name"
 									multiline={true}
-									rows={1}
+									rows={2}
 									id="outlined-with-placeholder"
 									margin="normal"
 									variant="outlined"
-									placeholder="Ex: github/com/shuffle/workflowbackup "
-									value={uploadRepo}
+									placeholder="The OpenID client ID from the identity provider"
+									value={openidClientId}
 									onChange={(e) => {
-										setUploadRepo(e.target.value);
+										setOpenidClientId(e.target.value);
 									}}
 									InputProps={{
 										classes: {
-											notchedOutline: isEditOrgTab ? null : classes.notchedOutline,
+											notchedOutline: classes.notchedOutline,
 										},
 										style: {
 											color: "white",
@@ -619,30 +570,30 @@ console.log("defatult in handleEditOrg", defaults)
 						</Grid>
 						<Grid item xs={6} style={{}}>
 							<span>
-								<Typography>Branch</Typography>
+								<Typography>Client Secret (optional)</Typography>
 								<TextField
 									required
 									style={{
 										flex: "1",
 										marginTop: "5px",
 										marginRight: "15px",
-										backgroundColor: isEditOrgTab ? "rgba(33, 33, 33, 1)" : theme.palette.inputColor,
+										backgroundColor: theme.palette.inputColor,
 									}}
 									fullWidth={true}
 									type="name"
+									multiline={true}
+									rows={2}
 									id="outlined-with-placeholder"
 									margin="normal"
 									variant="outlined"
-									multiline={true}
-									rows={1}
-									placeholder="The branch to use for backup of workflows"
-									value={uploadBranch}
+									placeholder="The OpenID client secret - DONT use this if dealing with implicit auth / PKCE"
+									value={openidClientSecret}
 									onChange={(e) => {
-										setUploadBranch(e.target.value);
+										setOpenidClientSecret(e.target.value);
 									}}
 									InputProps={{
 										classes: {
-											notchedOutline: isEditOrgTab ? null : classes.notchedOutline,
+											notchedOutline: classes.notchedOutline,
 										},
 										style: {
 											color: "white",
@@ -652,33 +603,33 @@ console.log("defatult in handleEditOrg", defaults)
 							</span>
 						</Grid>
 					</Grid>
-					<Grid container style={{ marginTop: 10, }} spacing={2}>
+					<Grid container style={{ marginTop: 10, }}>
 						<Grid item xs={6} style={{}}>
 							<span>
-								<Typography>Username</Typography>
+								<Typography>Authorization URL</Typography>
 								<TextField
 									required
 									style={{
 										flex: "1",
 										marginTop: "5px",
 										marginRight: "15px",
-										backgroundColor: isEditOrgTab ? "rgba(33, 33, 33, 1)" : theme.palette.inputColor,
+										backgroundColor: theme.palette.inputColor,
 									}}
 									fullWidth={true}
 									type="name"
-									multiline={true}
-									rows={1}
 									id="outlined-with-placeholder"
 									margin="normal"
 									variant="outlined"
-									placeholder="The username to use for backup of workflows"
-									value={uploadUsername}
+									multiline={true}
+									rows={2}
+									placeholder="The OpenID authorization URL (usually ends with /authorize)"
+									value={openidAuthorization}
 									onChange={(e) => {
-										setUploadUsername(e.target.value);
+										setOpenidAuthorization(e.target.value)
 									}}
 									InputProps={{
 										classes: {
-											notchedOutline: isEditOrgTab ? null : classes.notchedOutline,
+											notchedOutline: classes.notchedOutline,
 										},
 										style: {
 											color: "white",
@@ -689,515 +640,261 @@ console.log("defatult in handleEditOrg", defaults)
 						</Grid>
 						<Grid item xs={6} style={{}}>
 							<span>
-								<Typography>Git token/password</Typography>
+								<Typography>Token URL</Typography>
 								<TextField
 									required
 									style={{
 										flex: "1",
 										marginTop: "5px",
 										marginRight: "15px",
-										backgroundColor: isEditOrgTab ? "rgba(33, 33, 33, 1)" : theme.palette.inputColor,
+										backgroundColor: theme.palette.inputColor,
 									}}
 									fullWidth={true}
+									type="name"
 									id="outlined-with-placeholder"
 									margin="normal"
 									variant="outlined"
 									multiline={true}
-									rows={1}
-									placeholder="The token to use for backup of workflows. PS: This will be stored in cleartext in the database for now."
-									value={uploadToken}
+									rows={2}
+									placeholder="The OpenID token URL (usually ends with /token)"
+									value={openidToken}
 									onChange={(e) => {
-										setUploadToken(e.target.value);
+										setOpenidToken(e.target.value)
 									}}
 									InputProps={{
 										classes: {
-											notchedOutline: isEditOrgTab ? null : classes.notchedOutline,
+											notchedOutline: classes.notchedOutline,
 										},
 										style: {
 											color: "white",
 										},
 									}}
-									type="password"
 								/>
 							</span>
 						</Grid>
 					</Grid>
 				</Grid>
+				{/* } */}
+				{/*isCloud ? null : */}
+				<Grid item xs={12} style={{ marginTop: 50, }}>
+					<Typography variant="h4" style={{ textAlign: "center", }}>SAML SSO (v1.1)</Typography>
+					<Grid container style={{ marginTop: 20, }}>
+						<Grid item xs={6} style={{}}>
+							<span>
+								<Typography>SSO Entrypoint (IdP)</Typography>
+								<TextField
+									required
+									style={{
+										flex: "1",
+										marginTop: "5px",
+										marginRight: "15px",
+										backgroundColor: theme.palette.inputColor,
+									}}
+									fullWidth={true}
+									type="name"
+									multiline={true}
+									rows={2}
+									id="outlined-with-placeholder"
+									margin="normal"
+									variant="outlined"
+									placeholder="The entrypoint URL from your provider"
+									value={ssoEntrypoint}
+									onChange={(e) => {
+										setSsoEntrypoint(e.target.value);
+									}}
+									InputProps={{
+										classes: {
+											notchedOutline: classes.notchedOutline,
+										},
+										style: {
+											color: "white",
+										},
+									}}
+								/>
+							</span>
+						</Grid>
+						<Grid item xs={6} style={{}}>
+							<span>
+								<Typography>SSO Certificate (X509)</Typography>
+								<TextField
+									required
+									style={{
+										flex: "1",
+										marginTop: "5px",
+										marginRight: "15px",
+										backgroundColor: theme.palette.inputColor,
+									}}
+									fullWidth={true}
+									type="name"
+									id="outlined-with-placeholder"
+									margin="normal"
+									variant="outlined"
+									multiline={true}
+									rows={2}
+									placeholder="The X509 certificate to use"
+									value={ssoCertificate}
+									onChange={(e) => {
+										setSsoCertificate(e.target.value);
+									}}
+									InputProps={{
+										classes: {
+											notchedOutline: classes.notchedOutline,
+										},
+										style: {
+											color: "white",
+										},
+									}}
+								/>
+							</span>
+						</Grid>
+					</Grid>
+					{isCloud ?
+						<Typography variant="body2" style={{ textAlign: "left", }} color="textSecondary">
+							IdP URL for Shuffle: https://shuffler.io/api/v1/login_sso
+						</Typography>
+						: null}
+				</Grid>
+				{isCloud ? null : (
+					<Grid item xs={6} style={{}}>
+						<span>
+							<Typography>App Download URL</Typography>
+							<TextField
+								required
+								style={{
+									flex: "1",
+									marginTop: "5px",
+									marginRight: "15px",
+									backgroundColor: theme.palette.inputColor,
+								}}
+								fullWidth={true}
+								type="name"
+								id="outlined-with-placeholder"
+								margin="normal"
+								variant="outlined"
+								placeholder="A description for the organization"
+								value={appDownloadUrl}
+								onChange={(e) => {
+									setAppDownloadUrl(e.target.value);
+								}}
+								InputProps={{
+									classes: {
+										notchedOutline: classes.notchedOutline,
+									},
+									style: {
+										color: "white",
+									},
+								}}
+							/>
+						</span>
+					</Grid>
+				)}
+				{isCloud ? null : (
+					<Grid item xs={6} style={{}}>
+						<span>
+							<Typography>App Download Branch</Typography>
+							<TextField
+								required
+								style={{
+									flex: "1",
+									marginTop: "5px",
+									marginRight: "15px",
+									backgroundColor: theme.palette.inputColor,
+								}}
+								fullWidth={true}
+								type="name"
+								id="outlined-with-placeholder"
+								margin="normal"
+								variant="outlined"
+								placeholder="A description for the organization"
+								value={appDownloadBranch}
+								onChange={(e) => {
+									setAppDownloadBranch(e.target.value);
+								}}
+								InputProps={{
+									classes: {
+										notchedOutline: classes.notchedOutline,
+									},
+									style: {
+										color: "white",
+									},
+								}}
+							/>
+						</span>
+					</Grid>
+				)}
+				{isCloud ? null : (
+					<Grid item xs={6} style={{}}>
+						<span>
+							<Typography>Workflow Download URL</Typography>
+							<TextField
+								required
+								style={{
+									flex: "1",
+									marginTop: "5px",
+									marginRight: "15px",
+									backgroundColor: theme.palette.inputColor,
+								}}
+								fullWidth={true}
+								type="name"
+								id="outlined-with-placeholder"
+								margin="normal"
+								variant="outlined"
+								placeholder="A description for the organization"
+								value={workflowDownloadUrl}
+								onChange={(e) => {
+									setWorkflowDownloadUrl(e.target.value);
+								}}
+								InputProps={{
+									classes: {
+										notchedOutline: classes.notchedOutline,
+									},
+									style: {
+										color: "white",
+									},
+								}}
+							/>
+						</span>
+					</Grid>
+				)}
+				{isCloud ? null : (
+					<Grid item xs={6} style={{}}>
+						<span>
+							<Typography>Workflow Download Branch</Typography>
+							<TextField
+								required
+								style={{
+									flex: "1",
+									marginTop: "5px",
+									marginRight: "15px",
+									backgroundColor: theme.palette.inputColor,
+								}}
+								fullWidth={true}
+								type="name"
+								id="outlined-with-placeholder"
+								margin="normal"
+								variant="outlined"
+								placeholder="A description for the organization"
+								value={workflowDownloadBranch}
+								onChange={(e) => {
+									setWorkflowDownloadBranch(e.target.value);
+								}}
+								InputProps={{
+									classes: {
+										notchedOutline: classes.notchedOutline,
+									},
+									style: {
+										color: "white",
+									},
+								}}
+							/>
+						</span>
+					</Grid>
+				)}
 
-				<Typography variant="h4" style={{ marginLeft: 20, paddingTop: 100, borderTop: "1px solid rgba(255, 255, 255, 0.12)", width: "100%", marginTop: 50, }}>
-					SSO Configuration
-				</Typography>
-
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            marginLeft: 10,
-            width: "100%",
-          }}
-        >
-          <Typography
-            variant="body2"
-            color="textSecondary"
-            style={{ margin: "5px 0px 5px 10px" }}
-          >
-            Make SAML SSO or OpenID Authentication Required or Optional for Your
-            Organization.
-          </Typography>
-          <div>
-            <Switch
-              checked={SSORequired}
-              onChange={toggleBetweenRequiredOrOptional}
-              name="onOffSwitch"
-              color="primary"
-              title="Make SAML SSO or OpenID Authentication Required or Optional for Your Organization"
-            />
-            {SSORequired ? "Required" : "Optional"}
-          </div>
-        </div>
-        {/* <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            marginTop: 20,
-            marginLeft: 10,
-            width: "100%",
-            borderBottom: "1px solid #414347",
-            paddingBottom: 10,
-          }}
-        >
-          <Typography variant="body1" style={{ margin: "5px 0px 5px 10px" }}>
-            You can test your SSO configuration by clicking the button below.
-            Before testing, ensure you have set Open ID Connect or SAML SSO
-            credentials.
-          </Typography>
-          <Tooltip
-            title={
-              !(
-                ssoEntrypoint.length > 0 ||
-                ssoCertificate.length > 0 ||
-                openidAuthorization.length > 0 ||
-                openidClientId.length > 0
-              )
-                ? "Please ensure all SSO credentials are set before testing."
-                : ""
-            }
-          >
-            <span style={{ width: 100 }}>
-              <Button
-                variant="outlined"
-                color="primary"
-                style={{ width: 100, textTransform: "none", margin: 10 }}
-                disabled={
-                  !(
-                    ssoEntrypoint.length > 0 ||
-                    ssoCertificate.length > 0 ||
-                    openidAuthorization.length > 0 ||
-                    openidClientId.length > 0
-                  )
-                }
-                onClick={HandleTestSSO}
-              >
-                Test SSO
-              </Button>
-            </span>
-          </Tooltip>
-        </div> */}
-        <div></div>
-        <Grid item xs={12} style={{}}>
-          <Typography variant="h6" style={{ textAlign: "center" }}>
-            OpenID connect
-          </Typography>
-          <Grid container style={{ marginTop: 10 }}>
-            <Grid item xs={6} style={{}}>
-              <span>
-                <Typography>Client ID</Typography>
-                <TextField
-                  required
-                  style={{
-                    flex: "1",
-                    marginTop: "5px",
-                    marginRight: "15px",
-                    backgroundColor: theme.palette.inputColor,
-                  }}
-                  fullWidth={true}
-                  type="name"
-                  multiline={true}
-                  rows={2}
-                  disabled={
-                    selectedOrganization.manager_orgs !== undefined &&
-                    selectedOrganization.manager_orgs !== null &&
-                    selectedOrganization.manager_orgs.length > 0
-                  }
-                  id="outlined-with-placeholder"
-                  margin="normal"
-                  variant="outlined"
-                  placeholder="The OpenID client ID from the identity provider"
-                  value={openidClientId}
-                  onChange={(e) => {
-                    setOpenidClientId(e.target.value);
-                  }}
-                  InputProps={{
-                    classes: {
-                      notchedOutline: classes.notchedOutline,
-                    },
-                    style: {
-                      color: "white",
-                    },
-                  }}
-                />
-              </span>
-            </Grid>
-            <Grid item xs={6} style={{}}>
-              <span>
-                <Typography>Client Secret (optional)</Typography>
-                <TextField
-                  required
-                  style={{
-                    flex: "1",
-                    marginTop: "5px",
-                    marginRight: "15px",
-                    backgroundColor: theme.palette.inputColor,
-                  }}
-                  fullWidth={true}
-                  type="name"
-                  multiline={true}
-                  rows={2}
-                  disabled={
-                    selectedOrganization.manager_orgs !== undefined &&
-                    selectedOrganization.manager_orgs !== null &&
-                    selectedOrganization.manager_orgs.length > 0
-                  }
-                  id="outlined-with-placeholder"
-                  margin="normal"
-                  variant="outlined"
-                  placeholder="The OpenID client secret - DONT use this if dealing with implicit auth / PKCE"
-                  value={openidClientSecret}
-                  onChange={(e) => {
-                    setOpenidClientSecret(e.target.value);
-                  }}
-                  InputProps={{
-                    classes: {
-                      notchedOutline: classes.notchedOutline,
-                    },
-                    style: {
-                      color: "white",
-                    },
-                  }}
-                />
-              </span>
-            </Grid>
-          </Grid>
-          <Grid container style={{ marginTop: 10 }}>
-            <Grid item xs={6} style={{}}>
-              <span>
-                <Typography>Authorization URL</Typography>
-                <TextField
-                  required
-                  style={{
-                    flex: "1",
-                    marginTop: "5px",
-                    marginRight: "15px",
-                    backgroundColor: theme.palette.inputColor,
-                  }}
-                  fullWidth={true}
-                  type="name"
-                  id="outlined-with-placeholder"
-                  margin="normal"
-                  variant="outlined"
-                  multiline={true}
-                  rows={2}
-                  placeholder="The OpenID authorization URL (usually ends with /authorize)"
-                  value={openidAuthorization}
-                  onChange={(e) => {
-                    setOpenidAuthorization(e.target.value);
-                  }}
-                  InputProps={{
-                    classes: {
-                      notchedOutline: classes.notchedOutline,
-                    },
-                    style: {
-                      color: "white",
-                    },
-                  }}
-                />
-              </span>
-            </Grid>
-            <Grid item xs={6} style={{}}>
-              <span>
-                <Typography>Token URL</Typography>
-                <TextField
-                  required
-                  style={{
-                    flex: "1",
-                    marginTop: "5px",
-                    marginRight: "15px",
-                    backgroundColor: theme.palette.inputColor,
-                  }}
-                  fullWidth={true}
-                  type="name"
-                  id="outlined-with-placeholder"
-                  margin="normal"
-                  variant="outlined"
-                  multiline={true}
-                  rows={2}
-                  placeholder="The OpenID token URL (usually ends with /token)"
-                  value={openidToken}
-                  onChange={(e) => {
-                    setOpenidToken(e.target.value);
-                  }}
-                  InputProps={{
-                    classes: {
-                      notchedOutline: classes.notchedOutline,
-                    },
-                    style: {
-                      color: "white",
-                    },
-                  }}
-                />
-              </span>
-            </Grid>
-          </Grid>
-        </Grid>
-        {/* } */}
-        {/*isCloud ? null : */}
-        <Grid item xs={12} style={{ marginTop: 50 }}>
-          <Typography variant="h6" style={{ textAlign: "center" }}>
-            SAML SSO (v1.1)
-          </Typography>
-          <Grid container style={{ marginTop: 20 }}>
-            <Grid item xs={6} style={{}}>
-              <span>
-                <Typography>SSO Entrypoint (IdP)</Typography>
-                <TextField
-                  required
-                  style={{
-                    flex: "1",
-                    marginTop: "5px",
-                    marginRight: "15px",
-                    backgroundColor: theme.palette.inputColor,
-                  }}
-                  fullWidth={true}
-                  type="name"
-                  multiline={true}
-                  rows={2}
-                  disabled={
-                    selectedOrganization.manager_orgs !== undefined &&
-                    selectedOrganization.manager_orgs !== null &&
-                    selectedOrganization.manager_orgs.length > 0
-                  }
-                  id="outlined-with-placeholder"
-                  margin="normal"
-                  variant="outlined"
-                  placeholder="The entrypoint URL from your provider"
-                  value={ssoEntrypoint}
-                  onChange={(e) => {
-                    setSsoEntrypoint(e.target.value);
-                  }}
-                  InputProps={{
-                    classes: {
-                      notchedOutline: classes.notchedOutline,
-                    },
-                    style: {
-                      color: "white",
-                    },
-                  }}
-                />
-              </span>
-            </Grid>
-            <Grid item xs={6} style={{}}>
-              <span>
-                <Typography>SSO Certificate (X509)</Typography>
-                <TextField
-                  required
-                  style={{
-                    flex: "1",
-                    marginTop: "5px",
-                    marginRight: "15px",
-                    backgroundColor: theme.palette.inputColor,
-                  }}
-                  fullWidth={true}
-                  type="name"
-                  id="outlined-with-placeholder"
-                  margin="normal"
-                  variant="outlined"
-                  multiline={true}
-                  rows={2}
-                  placeholder="The X509 certificate to use"
-                  value={ssoCertificate}
-                  onChange={(e) => {
-                    setSsoCertificate(e.target.value);
-                  }}
-                  InputProps={{
-                    classes: {
-                      notchedOutline: classes.notchedOutline,
-                    },
-                    style: {
-                      color: "white",
-                    },
-                  }}
-                />
-              </span>
-            </Grid>
-          </Grid>
-          {isCloud ? (
-            <Typography
-              variant="body2"
-              style={{ textAlign: "left" }}
-              color="textSecondary"
-            >
-              IdP URL for Shuffle: https://shuffler.io/api/v1/login_sso
-            </Typography>
-          ) : null}
-        </Grid>
-        {isCloud ? null : (
-          <Grid item xs={6} style={{}}>
-            <span>
-              <Typography>App Download URL</Typography>
-              <TextField
-                required
-                style={{
-                  flex: "1",
-                  marginTop: "5px",
-                  marginRight: "15px",
-                  backgroundColor: theme.palette.inputColor,
-                }}
-                fullWidth={true}
-                type="name"
-                id="outlined-with-placeholder"
-                margin="normal"
-                variant="outlined"
-                placeholder="A description for the organization"
-                value={appDownloadUrl}
-                onChange={(e) => {
-                  setAppDownloadUrl(e.target.value);
-                }}
-                InputProps={{
-                  classes: {
-                    notchedOutline: classes.notchedOutline,
-                  },
-                  style: {
-                    color: "white",
-                  },
-                }}
-              />
-            </span>
-          </Grid>
-        )}
-        {isCloud ? null : (
-          <Grid item xs={6} style={{}}>
-            <span>
-              <Typography>App Download Branch</Typography>
-              <TextField
-                required
-                style={{
-                  flex: "1",
-                  marginTop: "5px",
-                  marginRight: "15px",
-                  backgroundColor: theme.palette.inputColor,
-                }}
-                fullWidth={true}
-                type="name"
-                id="outlined-with-placeholder"
-                margin="normal"
-                variant="outlined"
-                placeholder="A description for the organization"
-                value={appDownloadBranch}
-                onChange={(e) => {
-                  setAppDownloadBranch(e.target.value);
-                }}
-                InputProps={{
-                  classes: {
-                    notchedOutline: classes.notchedOutline,
-                  },
-                  style: {
-                    color: "white",
-                  },
-                }}
-              />
-            </span>
-          </Grid>
-        )}
-        {isCloud ? null : (
-          <Grid item xs={6} style={{}}>
-            <span>
-              <Typography>Workflow Download URL</Typography>
-              <TextField
-                required
-                style={{
-                  flex: "1",
-                  marginTop: "5px",
-                  marginRight: "15px",
-                  backgroundColor: theme.palette.inputColor,
-                }}
-                fullWidth={true}
-                type="name"
-                id="outlined-with-placeholder"
-                margin="normal"
-                variant="outlined"
-                placeholder="A description for the organization"
-                value={workflowDownloadUrl}
-                onChange={(e) => {
-                  setWorkflowDownloadUrl(e.target.value);
-                }}
-                InputProps={{
-                  classes: {
-                    notchedOutline: classes.notchedOutline,
-                  },
-                  style: {
-                    color: "white",
-                  },
-                }}
-              />
-            </span>
-          </Grid>
-        )}
-        {isCloud ? null : (
-          <Grid item xs={6} style={{}}>
-            <span>
-              <Typography>Workflow Download Branch</Typography>
-              <TextField
-                required
-                style={{
-                  flex: "1",
-                  marginTop: "5px",
-                  marginRight: "15px",
-                  backgroundColor: theme.palette.inputColor,
-                }}
-                fullWidth={true}
-                type="name"
-                id="outlined-with-placeholder"
-                margin="normal"
-                variant="outlined"
-                placeholder="A description for the organization"
-                value={workflowDownloadBranch}
-                onChange={(e) => {
-                  setWorkflowDownloadBranch(e.target.value);
-                }}
-                InputProps={{
-                  classes: {
-                    notchedOutline: classes.notchedOutline,
-                  },
-                  style: {
-                    color: "white",
-                  },
-                }}
-              />
-            </span>
-          </Grid>
-        )}
-
-        <div
-          style={{
-            margin: "auto",
-            textalign: "center",
-            marginTop: 15,
-            marginBottom: 15,
-          }}
-        >
-          {orgSaveButton}
-        </div>
-        {/*
+				<div style={{ margin: "auto", textalign: "center", marginTop: 15, marginBottom: 15, }}>
+					{orgSaveButton}
+				</div>
+				{/*
 					<span style={{textAlign: "center"}}>
 						{expanded ? 
 							<ExpandLessIcon />
@@ -1206,9 +903,9 @@ console.log("defatult in handleEditOrg", defaults)
 						}
 					</span>
 					*/}
-      </Grid>
-    </div>
-  );
-};
+			</Grid>
+		</div>
+	)
+}
 
 export default OrgHeaderexpanded;

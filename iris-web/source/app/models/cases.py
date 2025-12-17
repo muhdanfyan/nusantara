@@ -19,8 +19,8 @@ import uuid
 
 from datetime import datetime
 from flask_login import current_user
-from sqlalchemy import BigInteger
-from sqlalchemy import CheckConstraint
+# IMPORTS ------------------------------------------------
+from sqlalchemy import BigInteger, Table, CheckConstraint
 from sqlalchemy import Boolean
 from sqlalchemy import Column
 from sqlalchemy import Date
@@ -34,8 +34,7 @@ from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
-from sqlalchemy.orm import backref
+from sqlalchemy.orm import relationship, backref
 
 from app import db
 from app.datamgmt.states import update_assets_state
@@ -44,7 +43,7 @@ from app.datamgmt.states import update_ioc_state
 from app.datamgmt.states import update_notes_state
 from app.datamgmt.states import update_tasks_state
 from app.datamgmt.states import update_timeline_state
-from app.models.models import Client
+from app.models.models import Client, Base
 
 
 class Cases(db.Model):
@@ -95,8 +94,7 @@ class Cases(db.Model):
                  user=None,
                  custom_attributes=None,
                  classification_id=None,
-                 state_id=None,
-                 severity_id=None
+                 state_id=None
                  ):
         self.name = name[:200] if name else None,
         self.soc_id = soc_id,
@@ -113,8 +111,7 @@ class Cases(db.Model):
         self.case_uuid = uuid.uuid4()
         self.status_id = 0
         self.classification_id = classification_id
-        self.state_id = state_id,
-        self.severity_id = severity_id
+        self.state_id = state_id
 
     def save(self):
         """

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 
 import { 
 	TextField,
@@ -15,13 +15,11 @@ import {
 	Tooltip,
 	Typography,
 	IconButton,
-	Switch,
 } from '@mui/material';
-import { Context } from '../context/ContextApi.jsx';
 
 import { toast } from "react-toastify" 
 import { makeStyles } from "@mui/styles";
-import {getTheme} from '../theme.jsx';
+import theme from '../theme.jsx';
 import dayjs from 'dayjs';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import Pagination from '@mui/material/Pagination';
@@ -37,11 +35,6 @@ import {
     PlayArrow as PlayArrowIcon,
 	Insights as InsightsIcon, 
 	Replay as ReplayIcon, 
-	EditNote as EditNoteIcon,
-	AccountTree as AccountTreeIcon,
-	Cached as CachedIcon,
-	FilterAltOff as FilterAltOffIcon,
-	Send as SendIcon, 
 } from '@mui/icons-material';
 
 import { DataGrid, GridColDef, GridValueGetterParams } from '@mui/x-data-grid'
@@ -71,30 +64,17 @@ const RuntimeDebugger = (props) => {
 	const [endTime, setEndTime] = useState("")
 	const [startTime, setStartTime] = useState("")
 	const [totalCount, setTotalCount] = useState(0)
-	const {themeMode, supportEmail} = useContext(Context)
-	const theme = getTheme(themeMode)
 
 	const [workflow, setWorkflow] = useState({})
 	const [ignoreOrg, setIgnoreOrg] = useState(false)
 	const [searchLoading, setSearchLoading] = useState(false)
 	const [rowCursor, setCursor] = useState("")
 	const [rowsPerPage, setRowsPerPage] = useState(10)
-	const [maxExecutionCount, setMaxExecutionCount] = useState(50)
 	const [resultRows, setResultRows] = useState([])
 	const [selectedWorkflowExecutions, setSelectedWorkflowExecutions] = useState([])
-	const [suborgWorkflowRuns, setSuborgWorkflowRuns] = useState(false)
-	const [paginationModel, setPaginationModel] = useState({
-		page: 0,
-		pageSize: 10,
-	})
-	const [openWorkflowMenu, setOpenWorkflowMenu] = useState(false)
 	const [workflows, setWorkflows] = useState([
 		{"id": "", "name": "All Workflows",}
 	])
-
-	if (document != undefined) { 
-		document.title = "Workflow Run Debugger"
-	}
 
 	// Shitty workflow search on purpose :)
 	const handleWorkflowUsageCount = (workflows) => {
@@ -116,7 +96,7 @@ const RuntimeDebugger = (props) => {
 
 		var maxworkflows = 5
 
-		//console.log("Looking for MAX this amount of workflows: ", maxworkflows)
+		console.log("Looking for MAX this amount of workflows: ", maxworkflows)
 		for (let key in workflows) {
 			if (key > maxworkflows) {
 				break
@@ -177,7 +157,7 @@ const RuntimeDebugger = (props) => {
 		}, maxworkflows*300)
 	}
 
-	const submitSearch = (workflowId, status, startTime, endTime, cursor, limit, suborg_runs) => {
+	const submitSearch = (workflowId, status, startTime, endTime, cursor, limit) => {
 		handleWorkflowUsageCount(workflows)
 		//setResultRows([])
 		setSearchLoading(true)
@@ -190,7 +170,6 @@ const RuntimeDebugger = (props) => {
 			start_time: startTime,
 			end_time: endTime,
 			ignore_org: ignoreOrg,
-			suborg_runs: suborg_runs,
 		}
 
 		fetch(`${globalUrl}/api/v1/workflows/search`, {
@@ -240,7 +219,7 @@ const RuntimeDebugger = (props) => {
 	}
 
 
-	  const getAvailableWorkflows = (workflowId) => {
+	  const getAvailableWorkflows = () => {
 		fetch(globalUrl + "/api/v1/workflows", {
 		  method: "GET",
 		  headers: {
@@ -261,15 +240,6 @@ const RuntimeDebugger = (props) => {
 			  var foundWorkflows = [{"id": "", "name": "All Workflows",}]
 			  foundWorkflows.push(...responseJson)
 			  setWorkflows(foundWorkflows)
-
-			  if (workflowId !== undefined && workflowId !== null && workflowId !== "" && workflowId.length === 36) {
-				  for (var key in responseJson) {
-					  if (responseJson[key].id === workflowId) {
-						  setWorkflow(responseJson[key])
-						  break
-					  }
-				  }
-			  }
 		  }
 		})
 		.catch((error) => {
@@ -278,6 +248,7 @@ const RuntimeDebugger = (props) => {
 	  }
 
 	useEffect(() => {
+	  	getAvailableWorkflows()
 
 		// Find workflow_id in url query
 		const urlParams = new URLSearchParams(window.location.search);
@@ -293,8 +264,6 @@ const RuntimeDebugger = (props) => {
 				}
 			}
 		}
-
-	  	getAvailableWorkflows(workflowId)
 
 		const foundStatus = urlParams.get('status');
 		if (foundStatus !== undefined && foundStatus !== null && foundStatus !== "") {
@@ -345,46 +314,23 @@ const RuntimeDebugger = (props) => {
 
 				var source = params.row.execution_source
 				if (source === "schedule") {
-					foundSource = <img src={alltriggers[1].large_image} alt="schedule" style={{borderRadius: theme.palette?.borderRadius, height: imageSize, width: imageSize, }} />
+					foundSource = <img src={alltriggers[1].large_image} alt="schedule" style={{borderRadius: theme.palette.borderRadius, height: imageSize, width: imageSize, }} />
 				} else if (source === "webhook") {
-					foundSource = <img src={alltriggers[0].large_image} alt="webhook" style={{borderRadius: theme.palette?.borderRadius, height: imageSize, width: imageSize, }} />
+					foundSource = <img src={alltriggers[0].large_image} alt="webhook" style={{borderRadius: theme.palette.borderRadius, height: imageSize, width: imageSize, }} />
 				} else if (source === "subflow" || source.length === 36) {
-					foundSource = <img src={alltriggers[3].large_image} alt="subflow" style={{borderRadius: theme.palette?.borderRadius, height: imageSize, width: imageSize, }} />
+					foundSource = <img src={alltriggers[4].large_image} alt="subflow" style={{borderRadius: theme.palette.borderRadius, height: imageSize, width: imageSize, }} />
 					source = "subflow"
 				} else if (source === "rerun" || source.length === 36) {
 					foundSource = <ReplayIcon style={{color: theme.palette.primary.secondary, height: imageSize, width: imageSize, }} />
 					source = "rerun of a previous run"
-				} else if (source === "form") { 
-					foundSource = <EditNoteIcon style={{color: theme.palette.primary.secondary, height: imageSize, width: imageSize, }} />
-				} else if (source === "single_action" || source == "single_api" || source === "direct_api") { 
-					foundSource = <SendIcon color="secondary" style={{height: imageSize-5, }} />
-					source = "Single API call"
 				} else {
 					source = "manual"
-				}
-
-				var imageSource = "";
-				if (params?.row?.org?.id?.length > 0) {
-					if (params?.row?.org?.image?.length > 0){
-						imageSource = params?.row?.org?.image
-					}else {
-						imageSource = "/images/no_image.png"
-					}
-				} else {
-					if (userdata?.active_org?.image?.length > 0){
-						imageSource = userdata?.active_org?.image
-					}else {
-						imageSource = "/images/no_image.png"
-					}
 				}
 
 				return (
 					<span style={{}} onClick={() => {
 						//setStatus(params.row.status)
 					}}>
-						{userdata?.active_org?.creator_org?.length === 0 && suborgWorkflowRuns ? (
-							<img src={imageSource} alt={source} style={{borderRadius: theme.palette?.borderRadius, height: imageSize, width: imageSize, }} />
-						) : null}
 						<Tooltip title={source} placement="top">
 							{foundSource}
 						</Tooltip>
@@ -409,7 +355,7 @@ const RuntimeDebugger = (props) => {
 			headerName: 'Workflow Name',
 			width: 250,
 			renderCell: (params) => (
-				<div style={{ display: "flex", justifyContent: "center", alignItems: "center", cursor: "pointer", }} onClick={() => {
+				<span style={{cursor: "pointer", }} onClick={() => {
 					setWorkflowId(params.row.workflow.id)
 
 					for (let key in workflows) {
@@ -419,18 +365,8 @@ const RuntimeDebugger = (props) => {
 						}
 					}
 				}}>
-					<span>{params.row.workflow.name}</span>
-					{params?.row?.org?.id?.length > 0 && 
-						<Tooltip title={(
-							<div style={{display: "flex", }}>
-								<img src={params.row.org.image || "/images/no_image.png"} alt={params.row.org.name} style={{height: 24, width: 24, borderRadius: 12, }} />
-								<Typography variant="body2" style={{marginLeft: 5, }}>{params.row.org.name}</Typography>
-							</div>
-						)} placement="top" arrow>
-							<AccountTreeIcon style={{color: "#B0B0B0", height: "24px", width: "24px", marginLeft: 10}} />
-						</Tooltip>
-					}
-				</div>
+					{params.row.workflow.name}
+				</span>
 			),
 		  },
 
@@ -641,7 +577,7 @@ const RuntimeDebugger = (props) => {
 						  </Link>
 						</span>
 						</Tooltip>
-						<Tooltip arrow title={`Force continue workflow. Only workflows for workflows in EXECUTING state. This is NOT a rerun, but way for Shuffle to figure out the next steps automatically. If the execution doesn't finish even after trying this, please contact ${supportEmail}`}> 
+						<Tooltip arrow title="Force continue workflow. Only workflows for workflows in EXECUTING state. This is NOT a rerun, but way for Shuffle to figure out the next steps automatically. If the execution doesn't finish even after trying this, please contact support@shuffler.io"> 
 						  <IconButton
 							style={{marginLeft: 5, }}
 							disabled={params.row.status !== "EXECUTING"}
@@ -671,20 +607,13 @@ const RuntimeDebugger = (props) => {
 	]
 
 	useEffect(() => {
-		setPaginationModel(prev => ({
-			...prev,
-			pageSize: rowsPerPage
-		}))
-	}, [rowsPerPage])
-
-	useEffect(() => {
 		// Check if the user is currently focusing a texxtfield or not
 		// If they are, don't submit the search
 		if (document.activeElement.tagName === "INPUT") {
 			return
 		}
 
-		submitSearch(workflowId, status, startTime, endTime, rowCursor, maxExecutionCount, suborgWorkflowRuns)
+		submitSearch(workflowId, status, startTime, endTime, rowCursor, rowsPerPage)
 	}, [workflowId, status, startTime, endTime])
 
 	const textfieldStyle = {
@@ -733,9 +662,8 @@ const RuntimeDebugger = (props) => {
 
 		setWorkflow(e.target.value)
 		setWorkflowId(e.target.value.id)
-		setSuborgWorkflowRuns(false)
 
-		submitSearch(e.target.value.id, status, startTime, endTime, rowCursor, maxExecutionCount, false)
+		submitSearch(e.target.value.id, status, startTime, endTime, rowCursor, rowsPerPage)
 	}
 
 	const executeWorkflow = (execution) => {
@@ -768,7 +696,6 @@ const RuntimeDebugger = (props) => {
 				  toast("Error executing workflow: "+responseJson.error)
 			  } else {
 				  console.log("Executed workflow: ", responseJson)
-				  submitSearch(workflowId, status, startTime, endTime, rowCursor, maxExecutionCount, suborgWorkflowRuns)
 			  }
     	    })
     	    .catch((error) => {
@@ -829,20 +756,84 @@ const RuntimeDebugger = (props) => {
 
 	return (
 		<div style={{minWidth: 1150, maxWidth: 1150, margin: "auto", }}>
-			<div style={{display: "flex", paddingTop: 50, }}>
+			<div style={{display: "flex", }}>
 				<div style={{display: 'flex', flexDirection: 'column'}}>
-					<div style={{display: "flex", width: "100%", }}>
-						<Typography  variant="h3" style={{flex: 3, whiteSpace: "nowrap" }}>
-							Workflow Run Debugger {totalCount !== 0 ? ` (~${totalCount})` : ""}
-						</Typography>
+				<h1 style={{flex: 3, }}>Workflow Run Debugger {totalCount !== 0 ? ` (~${totalCount})` : ""}</h1>
+					<div style={{position: 'relative', right: 10, marginBottom: 10}}>
+						<TextField
+						fullWidth
+						value={searchQuery}
+						style={{
+							backgroundColor: theme.palette.inputColor,
+							marginTop: 20,
+							marginLeft: 10,
+							marginRight: 12,
+							width: 693,
+							height: 55,
+							borderRadius: 8,
+							fontSize: 16,
+							marginBottom: 15,
+						}}
+						InputProps={{
+							style: {
+							color: "white",
+							fontSize: "1em",
+							height: 55,
+							width: 693,
+							borderRadius: 8,
+							},
+							startAdornment: (
+							<InputAdornment position="start">
+								<SearchIcon style={{ marginLeft: 5}} />
+							</InputAdornment>
+							),
+							endAdornment: (
+							<InputAdornment position="end">
+								{searchQuery.length > 0 && (
+								<ClearIcon
+									style={{
+									color: "white",
+									cursor: "pointer",
+									marginRight: 10
+									}}
+									onClick={() => setSearchQuery('')} 
+								/>
+								 )} 
+								<button
+								type="button"
+								style={{
+									backgroundImage:
+									"linear-gradient(to right, rgb(248, 106, 62), rgb(243, 64, 121))",
+									color: "white",
+									border: "none",
+									padding: "10px 20px",
+									width: 100,
+									height: 35,
+									borderRadius: 17.5,
+									cursor: "pointer",
+								}}
+								>
+								Search
+								</button>
+							</InputAdornment>
+							),
+							
+						}}
+						onChange={(e)=>{handleQueryChange(e)}}
+						color="primary"
+						placeholder="Filter by Workflow Name, Status, Execution Argument, Results.."
+						id="shuffle_search_field"
+        				/>
+					</div>
 
-					{selectedWorkflowExecutions.length > 0 ?
-					  <ButtonGroup>
+				</div>
+				{selectedWorkflowExecutions.length > 0 ?
+					<ButtonGroup>
 						<Tooltip title="Reruns ALL selected workflows. This will make a new execution for them, and not continue the existing.">
 							<Button
 								variant="outlined"
 								color="secondary"
-								style={{maxHeight: 40, marginTop: 25, marginLeft: 20, }}
+								style={{maxHeight: 40, marginTop: 25, }}
 								onClick={() => {
 
 									for (var i = 0; i < selectedWorkflowExecutions.length; i++) {
@@ -880,7 +871,7 @@ const RuntimeDebugger = (props) => {
 									} else {
 										toast("Aborted "+aborted+" workflows.")
 										// Research
-										submitSearch(workflowId, status, startTime, endTime, rowCursor, maxExecutionCount, suborgWorkflowRuns)
+										submitSearch(workflowId, status, startTime, endTime, rowCursor, rowsPerPage)
 
 										setSelectedWorkflowExecutions([])
 									}
@@ -897,123 +888,19 @@ const RuntimeDebugger = (props) => {
 				{userdata.support === true ? 
 					<Button
 						variant={ignoreOrg ? "contained" : "outlined"}
-						color="secondary"
-						style={{marginLeft: 20, maxHeight: 40, marginTop: 25, }}
+						color="primary"
+						style={{maxHeight: 40, marginTop: 25, }}
 						onClick={() => {
 							setIgnoreOrg(!ignoreOrg)
 						}}
 					>
-						{ignoreOrg ? "Ignoring Org" : "Ignore Org (Support Only)"}
+						{ignoreOrg ? "Ignoring Org" : "Ignore Org"}
 					</Button>
 				: null}
-				</div>
-					<div style={{display: "flex", justifyContent: "space-between", width: "100%"}}>
-					<div style={{position: 'relative', right: 10, marginBottom: 10}}>
-						<TextField
-						fullWidth
-						value={searchQuery}
-						style={{
-							backgroundColor: theme.palette.backgroundColor,
-						  color: theme.palette.textColor,
-							marginTop: 20,
-							marginLeft: 10,
-							marginRight: 12,
-							width: 643,
-							height: 51,
-							borderRadius: 4,
-							fontSize: 16,
-						}}
-						InputProps={{
-							style: {
-							backgroundColor: theme.palette.backgroundColor,
-							color: theme.palette.textColor,
-							fontSize: "1em",
-							height: 51,
-							width: 643,
-							borderRadius: 4,
-							},
-							startAdornment: (
-							<InputAdornment position="start">
-								<SearchIcon style={{ marginLeft: 5}} />
-							</InputAdornment>
-							),
-							endAdornment: (
-							<InputAdornment position="end">
-								{searchQuery.length > 0 && (
-								<ClearIcon
-									style={{
-									color: "white",
-									cursor: "pointer",
-									marginRight: 10
-									}}
-									onClick={() => setSearchQuery('')} 
-								/>
-								 )} 
-							</InputAdornment>
-							),
-							
-						}}
-						onChange={(e)=>{handleQueryChange(e)}}
-						color="primary"
-						placeholder="Filter by Workflow Name, Status, Execution Argument, Results"
-						id="shuffle_search_field"
-        				/>
-						<Tooltip title="Set the maximum number of workflow executions to retrieve in search results" placement="top">
-							<FormControl style={{ minWidth: 120, marginTop: 20 }}>
-							<InputLabel id="max-execution-count-label" style={{ fontSize: '0.875rem' }}>Max Results</InputLabel>
-								<Select
-									labelId="max-execution-count-label"
-									id="max-execution-count-select"
-									value={maxExecutionCount}
-									label="Max Results"
-									size="small"
-									onChange={(e) => {
-										setMaxExecutionCount(e.target.value)
-										submitSearch(workflowId, status, startTime, endTime, rowCursor, e.target.value, suborgWorkflowRuns)
-									}}
-									style={{ 
-										height: 50,
-										backgroundColor: theme.palette.backgroundColor,
-										color: theme.palette.textColor,
-									}}
-								>
-									<MenuItem value={10}>10</MenuItem>
-									<MenuItem value={25}>25</MenuItem>
-									<MenuItem value={50}>50</MenuItem>
-									<MenuItem value={100}>100</MenuItem>
-									<MenuItem value={200}>200</MenuItem>
-									<MenuItem value={500}>500</MenuItem>
-								</Select>
-							</FormControl>
-						</Tooltip>
-					</div>
-					{userdata?.active_org?.creator_org?.length === 0 ? (
-						<div style={{display: "flex", margin: 'auto',marginTop: 20,justifyContent: 'center', alignItems: 'center', }}>
-						<Switch 
-							checked={suborgWorkflowRuns}
-							onChange={() => {
-								setSuborgWorkflowRuns(!suborgWorkflowRuns);
-								//set selected workflow to all workflows when switching between suborg and all workflows
-								setWorkflowId("")
-								setWorkflow({"id": "", "name": "All Workflows"})
-								setStatus("")
-								setStartTime("")
-								setEndTime("")
-								setSearchQuery("")
-								setMaxExecutionCount(50)
-								submitSearch("", "", "", "", rowCursor, 50, !suborgWorkflowRuns)}
-							}
-							color="secondary"
-						/>
-						<Typography variant="body2">Show workflow runs from suborgs</Typography>
-					</div>
-					) : null}
-					</div>
-				</div>
 			</div>
 			<form onSubmit={(e) => {
-				submitSearch(workflowId, status, startTime, endTime, rowCursor, maxExecutionCount, suborgWorkflowRuns)
-			}} style={{display: "flex", justifyContent: "center", alignItems: "center", }}>
+				submitSearch(workflowId, status, startTime, endTime, rowCursor, rowsPerPage)
+			}} style={{display: "flex", }}>
 				<FormControl fullWidth style={{marginTop: 5, }}>
 				  <InputLabel id="status-label">Status</InputLabel>
 				  <Select
@@ -1047,19 +934,19 @@ const RuntimeDebugger = (props) => {
 				<Autocomplete
 				  id="workflow_search"
 				  value={workflow}
-				  open={openWorkflowMenu}
-				  onOpen={()=>{setOpenWorkflowMenu(true)}}
-				  onClose={() => {setOpenWorkflowMenu(false)}}
 				  classes={{ inputRoot: classes.inputRoot }}
 				  ListboxProps={{
 					style: {
-					  backgroundColor: theme.palette.backgroundColor,
-					  color: theme.palette.textColor,
+					  backgroundColor: theme.palette.inputColor,
+					  color: "white",
 					},
 				  }}
 				  getOptionLabel={(option) => {
-					if (option === undefined || option === null ||
-					  option.name === undefined || option.name === null
+					if (
+					  option === undefined ||
+					  option === null ||
+					  option.name === undefined ||
+					  option.name === null
 					) {
 					  return "No Workflow Selected";
 					}
@@ -1072,11 +959,11 @@ const RuntimeDebugger = (props) => {
 				  options={workflows}
 				  fullWidth
 				  style={{
-					backgroundColor: theme.palette.backgroundColor,
+					backgroundColor: theme.palette.inputColor,
 					height: 50,
-					borderRadius: 4,
+					borderRadius: theme.palette.borderRadius,
+					marginTop: 5, 
 					marginLeft: 5,
-					marginBottom: 3,
 				  }}
 				  onChange={(event, newValue) => {
 					console.log("Found value: ", newValue)
@@ -1108,27 +995,21 @@ const RuntimeDebugger = (props) => {
 					  <Tooltip arrow placement="left" title={
 						<span style={{}}>
 						  {data.image !== undefined && data.image !== null && data.image.length > 0 ?
-							<img src={data.image} alt={data.name} style={{ backgroundColor: theme.palette.surfaceColor, maxHeight: 200, minHeigth: 200, borderRadius: theme.palette?.borderRadius, }} />
+							<img src={data.image} alt={data.name} style={{ backgroundColor: theme.palette.surfaceColor, maxHeight: 200, minHeigth: 200, borderRadius: theme.palette.borderRadius, }} />
 							: null}
 						  <Typography>
 							Choose {data.name}
 						  </Typography>
 						</span>
-					  }>
+					  } placement="bottom">
 						<MenuItem
 						  style={{
-							backgroundColor: theme.palette.backgroundColor,
-							color: data.id === workflow.id ? "red" : theme.palette.textColor,
-						  }}
-						  sx={{
-							"&:hover": {
-								backgroundColor: theme.palette.hoverColor,
-							},
+							backgroundColor: theme.palette.inputColor,
+							color: data.id === workflow.id ? "red" : "white",
 						  }}
 						  value={data}
 						  onClick={(e) => {
 							var parsedinput = { target: { value: data } }
-							setOpenWorkflowMenu(false)
 							handleWorkflowSelectionUpdate(parsedinput)
 						  }}
 						>
@@ -1141,15 +1022,8 @@ const RuntimeDebugger = (props) => {
 					return (
 					  <TextField
 						style={{
-						  backgroundColor: theme.palette.backgroundColor,
-						  color: theme.palette.textColor,
-						  borderRadius: 4,
-						}}
-						inputProps={{
-							style: {
-							backgroundColor: theme.palette.backgroundColor,
-							color: theme.palette.textColor,
-							},
+						  backgroundColor: theme.palette.inputColor,
+						  borderRadius: theme.palette.borderRadius,
 						}}
 						{...params}
 						label="Workflow"
@@ -1162,9 +1036,8 @@ const RuntimeDebugger = (props) => {
 				<LocalizationProvider dateAdapter={AdapterDayjs}>
 		        	<DateTimePicker
 					  sx={{
+						marginTop: 1, 
 						marginLeft: 1,
-						minHeight: 50,
-						maxHeight: 50,
 						minWidth: 240,
 					    maxWidth: 240,
 					  }}
@@ -1177,11 +1050,10 @@ const RuntimeDebugger = (props) => {
 					/>
 					<DateTimePicker
 					  sx={{
+						marginTop: 1, 
 						marginLeft: 1,
 						minWidth: 240,
 					    maxWidth: 240,
-						minHeight: 50,
-						maxHeight: 50,
 					  }}
 					  ampm={false}
 					  label="Search until"
@@ -1192,33 +1064,14 @@ const RuntimeDebugger = (props) => {
 					/>
 				</LocalizationProvider>
 
-				<Tooltip title="Clear all filters and search parameters">
-					<Button
-						style={{ marginLeft: 10, minHeight: 60, marginTop: 10, backgroundColor: theme.palette.backgroundColor, border: "1px solid #424242", boxShadow: 'none', borderRadius: 4, width: 81, height: 51, marginRight: 15 }}
-						onClick={() => {
-							setWorkflowId("")
-							setWorkflow({"id": "", "name": "All Workflows"})
-							setStatus("")
-							setStartTime("")
-							setEndTime("")
-							setSearchQuery("")
-							setSuborgWorkflowRuns(false)
-							setMaxExecutionCount(50)
-							submitSearch("", "", "", "", rowCursor, 50, false)
-						}}
-					>
-						<FilterAltOffIcon />
-					</Button>
-				</Tooltip>
-
 				<Button
 					variant="outlined"
 					color="primary"
 					onClick={() => {
-						submitSearch(workflowId, status, startTime, endTime, rowCursor, maxExecutionCount, suborgWorkflowRuns) 
+						submitSearch(workflowId, status, startTime, endTime, rowCursor, rowsPerPage) 
 					}}
 					disabled={searchLoading}
-					style={{height: 50, minWidth: 100, marginTop: 15, }}
+					style={{height: 50, minWidth: 100, marginTop: 15, marginLeft: 10, }}
 				>
 					{searchLoading ? <CircularProgress size={30} /> : "Search"}
 				</Button>
@@ -1227,17 +1080,19 @@ const RuntimeDebugger = (props) => {
 				<DataGrid
 					rows={filteredRows}
 					columns={columns}
-					paginationModel={paginationModel}
-					pageSizeOptions={[10, 20, 50, 75, 100]}
+					pageSize={rowsPerPage}
+					rowsPerPageOptions={[10, 20, 50, 100]}
 					checkboxSelection
 					disableSelectionOnClick
-
-					onPaginationModelChange={(newPaginationModel) => {
-						setPaginationModel(newPaginationModel)
-						setRowsPerPage(newPaginationModel.pageSize)
-						// No API call needed - this is just for client-side pagination
+					onPageSizeChange={(newPageSize) => {
+						setRowsPerPage(newPageSize)
+						submitSearch(workflowId, status, startTime, endTime, rowCursor, newPageSize) 
 					}}
-					selectionModel={selectedWorkflowExecutions.map((workflow) => workflow.id)}
+					// event for when clicking next page
+					// Hide page changer
+					onPageChange={(params) => {
+						console.log("params: ", params)
+					}}
 		  			onSelectionModelChange={(newSelection) => {
 						//console.log("newSelection: ", newSelection)
 		  			    //setSelectedWorkflowExecutionsIndexes(newSelection)

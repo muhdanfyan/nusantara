@@ -36,9 +36,8 @@ import {
 	Avatar,
   AvatarGroup,
 } from "@mui/material"
-import { useDebouncedCallback } from "../utils/useDebouncedCallback.jsx";
 
-const searchClient = algoliasearch("JNSS5CFDZZ", "c8f882473ff42d41158430be09ec2b4e")
+const searchClient = algoliasearch("JNSS5CFDZZ", "db08e40265e2941b9a7d8f644b6e5240")
 const CreatorGrid = props => {
 	const { maxRows, showName, showSuggestion, isMobile, globalUrl, parsedXs, isHeader }  = props
 	const rowHandler = maxRows === undefined || maxRows === null ? 50 : maxRows
@@ -110,8 +109,6 @@ const CreatorGrid = props => {
 			}
 		}
 
-		const debouncedRefine = useDebouncedCallback((value) => refine(value), 300)
-
 		return (
 		  <form noValidate action="" role="search">
 				<TextField 
@@ -137,12 +134,7 @@ const CreatorGrid = props => {
 					id="shuffle_search_field"
 					onChange={(event) => {
 						removeQuery("q")
-						debouncedRefine(event.currentTarget.value)
-					}}
-					onKeyDown={(event) => {
-						if(event.key === "Enter") {
-							event.preventDefault();
-						}
+						refine(event.currentTarget.value)
 					}}
 				/>
 				{/*isSearchStalled ? 'My search is stalled' : ''*/}
@@ -155,7 +147,6 @@ const CreatorGrid = props => {
     flexWrap: "wrap",
     alignContent: "space-between",
     marginTop: 5,
-	padding:"0px 180px",
   }
 	
 	const Hits = ({ hits }) => {
@@ -193,10 +184,10 @@ const CreatorGrid = props => {
 														null
 														}
 													</span>
-											</div>
-											<Typography variant="body1" color="textSecondary" style={{marginTop: 10, }}>
-												<b>{data.apps === undefined || data.apps === null ? 0 : data.apps}</b> apps <span style={{marginLeft: 15, }}/><b>{data.workflows === null || data.workflows === undefined ? 0 : data.workflows}</b> workflows
-											</Typography> 
+												</div>
+												<Typography variant="body1" color="textSecondary" style={{marginTop: 10, }}>
+													<b>{data.apps === undefined || data.apps === null ? 0 : data.apps}</b> apps <span style={{marginLeft: 15, }}/><b>{data.workflows === null || data.workflows === undefined ? 0 : data.workflows}</b> workflows
+												</Typography> 
 											{data.specialized_apps !== undefined && data.specialized_apps !== null && data.specialized_apps.length > 0 ? 
 												<AvatarGroup max={10} style={{flexDirection: "row", padding: 0, margin: 0, itemAlign: "left", textAlign: "left", marginTop: 3,}}>
 													{data.specialized_apps.map((app, index) => {
@@ -270,7 +261,7 @@ const CreatorGrid = props => {
 							autoComplete="email"
 							margin="normal"
 							variant="outlined"
-				  				onChange={e => setFormMail(e.target.value)}
+      	 				onChange={e => setFormMail(e.target.value)}
 						/>
 						<TextField
 							required
@@ -288,7 +279,7 @@ const CreatorGrid = props => {
 							margin="normal"
 							variant="outlined"
 							autoComplete="off"
-				  			onChange={e => setMessage(e.target.value)}
+      	 			onChange={e => setMessage(e.target.value)}
 						/>
 					</div>
 					<Button

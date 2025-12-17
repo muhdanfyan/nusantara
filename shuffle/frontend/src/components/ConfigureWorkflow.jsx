@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect } from "react";
 import { useInterval } from "react-powerhooks";
 import { toast } from 'react-toastify';
-import {getTheme} from "../theme.jsx";
-import WorkflowValidationTimeline from "../components/WorkflowValidationTimeline.jsx"
+import theme from "../theme.jsx";
 
 import {
   InputAdornment,
@@ -20,7 +19,7 @@ import {
   Collapse,
   IconButton,
 } from "@mui/material";
-import { Context } from "../context/ContextApi.jsx";
+
 import { 
 	FavoriteBorder as FavoriteBorderIcon,
 	Error as ErrorIcon,
@@ -76,13 +75,11 @@ const ConfigureWorkflow = (props) => {
   const [showFinalizeAnimation, setShowFinalizeAnimation] = React.useState(false);
   const [loopRunning, setLoopRunning] = useState(false)
   const [checkStarted, setCheckStarted] = React.useState(false);
-  const { themeMode } = useContext(Context);
-  const theme = getTheme(themeMode);
 
   useEffect(() => { 
 	  if (requiredActions.length === 0) { 
 		  if (setConfigurationFinished !== undefined) {
-		      setConfigurationFinished(true)
+			setConfigurationFinished(true)
 		  }
 	  }
   }, [requiredActions])
@@ -144,18 +141,17 @@ const ConfigureWorkflow = (props) => {
 
 	// Where is this from?
   if (workflow === undefined || workflow === null || workflow.id === undefined) {
-	//console.log("Workflow is undefined or null: ", workflow)
-    return null
+    return null;
   }
 
   if (apps === undefined || apps === null) {
-	  //console.log("Apps is undefined or null: ", apps)
-      return null
+	  console.log("Apps is undefined or null: ", apps)
+      return null;
   }
 
   if (appAuthentication === undefined || appAuthentication === null) {
-	  //console.log("App authentication is undefined or null: ", appAuthentication)
-      return null
+	  console.log("App authentication is undefined or null: ", appAuthentication)
+      return null;
   }
 
   const getApp = (actionId, appId) => {
@@ -314,7 +310,7 @@ const ConfigureWorkflow = (props) => {
 			}
 		}
 
-        if (action?.authentication_id === "" && app?.authentication?.required === true && action.parameters !== undefined && action.parameters !== null) {
+        if (action.authentication_id === "" && app.authentication.required === true && action.parameters !== undefined && action.parameters !== null) {
 		  // Check if configuration is filled or not
           var filled = true;
           for (let [key,keyval] in Object.entries(action.parameters)) {
@@ -326,7 +322,7 @@ const ConfigureWorkflow = (props) => {
             }
           }
 
-		  if (app?.authentication?.type === "oauth2" || app?.authentication?.type === "oauth2-app") {
+		  if (app.authentication.type === "oauth2" || app.authentication.type === "oauth2-app") {
 			  filled = false
 			
 			  action.auth_type = "oauth2"
@@ -429,8 +425,10 @@ const ConfigureWorkflow = (props) => {
 		  trigger.index = key;
 
 		  if (trigger.trigger_type === "WEBHOOK") {
+		  	console.log("Found webhook: ", trigger)
 
 		  	if (trigger.app_association !== undefined && trigger.app_association.name !== null && trigger.app_association.name !== "") {
+		  		console.log("Actions: ", newactions)
 		  		const findapp = trigger.app_association.name.toLowerCase()
 		  		const foundindex = newactions.findIndex(action => action.app_name.toLowerCase() === findapp)
 
@@ -450,6 +448,9 @@ const ConfigureWorkflow = (props) => {
 		  			}
 		  	
 		  			newactions[foundindex].show_steps = true
+
+		  			console.log("CHANGED ACTION: ", newactions[foundindex])
+		  			//console.log("Index: ", newactions[foundindex])
 
 		  			continue
 		  		}
@@ -600,7 +601,7 @@ const ConfigureWorkflow = (props) => {
             <TextField
               style={{
                 backgroundColor: theme.palette.inputColor,
-                borderRadius: theme.palette?.borderRadius,
+                borderRadius: theme.palette.borderRadius,
               }}
               InputProps={{
                 endAdornment: <InputAdornment position="end"></InputAdornment>,
@@ -633,7 +634,7 @@ const ConfigureWorkflow = (props) => {
 		if (aa !== undefined) {
 			aa('init', {
 					appId: "JNSS5CFDZZ",
-					apiKey: "c8f882473ff42d41158430be09ec2b4e",
+					apiKey: "db08e40265e2941b9a7d8f644b6e5240",
 			})
 
 			const timestamp = new Date().getTime()
@@ -795,22 +796,20 @@ const ConfigureWorkflow = (props) => {
 	}
 
 	parsedName = (parsedName.charAt(0).toUpperCase() + parsedName.slice(1)).replaceAll("_", " ");
+
+	console.log("AUTH Action: ", action)
 	return (
 		<ListItem 
 			style={{padding: 0, display: "flex", flexDirection: "column", }}
 		>
 			<div 
 				style={{
-					border: filled ? `1px solid ${theme.palette.green}` : theme.palette.textFieldStyle.border, borderRadius: theme.palette?.borderRadius, width: "100%", padding: 12, cursor: filled ? "default" : "pointer", 
+					border: filled ? `1px solid ${theme.palette.green}` : "1px solid rgba(255,255,255,0.3)", borderRadius: theme.palette.borderRadius, width: "100%", padding: 12, cursor: "pointer", 
 				}}
 				id="app-config"
 			>
 				<div style={{display: "flex", }}
 					onClick={() => {
-						if (filled) {
-							return
-						}
-
 						setOpened(!opened);
 
 						// Scroll to it
@@ -854,7 +853,7 @@ const ConfigureWorkflow = (props) => {
 				{opened ?
 					<div style={{padding: 12, }}>
 	
-						{action.app?.authentication?.type === "oauth2-app" || action.app?.authentication?.type === "oauth2" || action.auth_type === "oauth2" ?
+						{action.app.authentication.type === "oauth2-app" || action.app.authentication.type === "oauth2" || action.auth_type === "oauth2" ?
 							<div>
 								<AuthenticationOauth2
 									selectedApp={action.app}
@@ -871,7 +870,6 @@ const ConfigureWorkflow = (props) => {
 									isLoggedIn={true}
 									getAppAuthentication={undefined}
 
-									workflow={workflow}
 									setFinalized={setFinalized}
 								/>
 							</div>
@@ -952,7 +950,7 @@ const ConfigureWorkflow = (props) => {
 							)
 						})}
 
-						{action.app?.authentication?.type !== "oauth2-app" && action.app?.authentication?.type !== "oauth2" ?  
+						{action.app.authentication.type !== "oauth2-app" && action.app.authentication.type !== "oauth2" ?  
 							<Button
 								variant="contained"
 								color="primary"
@@ -1003,7 +1001,7 @@ const ConfigureWorkflow = (props) => {
 				justifyContent: "flex-start",
 				backgroundColor: action.auth_done ? theme.palette.surfaceColor : theme.palette.inputColor,
 				color: action.auth_done ? "#686a6c" : "#ffffff",
-				borderRadius: theme.palette?.borderRadius,
+				borderRadius: theme.palette.borderRadius,
 				minWidth: 350, 
 				maxHeight: 50,
 				overflow: "hidden",
@@ -1043,7 +1041,7 @@ const ConfigureWorkflow = (props) => {
 		>
 			<img
 				alt={action.app_name}
-				style={{ margin: 4, minHeight: 30, maxHeight: 30, borderRadius: theme.palette?.borderRadius, }}
+				style={{ margin: 4, minHeight: 30, maxHeight: 30, borderRadius: theme.palette.borderRadius, }}
 				src={action.large_image}
 			/>
 			<Typography style={{ margin: 0, marginLeft: 10 }} variant="body1">
@@ -1063,7 +1061,7 @@ const ConfigureWorkflow = (props) => {
 							justifyContent: "flex-start",
 							backgroundColor: action.auth_done ? theme.palette.surfaceColor : theme.palette.inputColor,
 							color: action.auth_done ? "#686a6c" : "#ffffff",
-							borderRadius: theme.palette?.borderRadius,
+							borderRadius: theme.palette.borderRadius,
 							minWidth: 350, 
 							maxHeight: 50,
 							overflow: "hidden",
@@ -1094,7 +1092,7 @@ const ConfigureWorkflow = (props) => {
           >
 						<img
 							alt={action.app_name}
-							style={{ margin: 4, minHeight: 30, maxHeight: 30, borderRadius: theme.palette?.borderRadius, }}
+							style={{ margin: 4, minHeight: 30, maxHeight: 30, borderRadius: theme.palette.borderRadius, }}
 							src={action.large_image}
 						/>
 						<Typography style={{ margin: 0, marginLeft: 10 }} variant="body1">
@@ -1114,7 +1112,7 @@ const ConfigureWorkflow = (props) => {
 								justifyContent: "flex-start",
 								backgroundColor: action.auth_done ? theme.palette.surfaceColor : theme.palette.inputColor,
 								color: action.auth_done ? "#686a6c" : "#ffffff",
-								borderRadius: theme.palette?.borderRadius,
+								borderRadius: theme.palette.borderRadius,
 								minWidth: 350, 
 								maxHeight: 50,
 								overflow: "hidden",
@@ -1129,7 +1127,7 @@ const ConfigureWorkflow = (props) => {
 					>
 						<img
 							alt={action.app_name}
-							style={{ margin: 4, minHeight: 30, maxHeight: 30, borderRadius: theme.palette?.borderRadius, }}
+							style={{ margin: 4, minHeight: 30, maxHeight: 30, borderRadius: theme.palette.borderRadius, }}
 							src={action.large_image}
 						/>
 						<Typography style={{ margin: 0, marginLeft: 10 }} variant="body1">
@@ -1281,7 +1279,7 @@ const ConfigureWorkflow = (props) => {
 		const [finishCount, setFinishCount] = useState(0)
 
 		return (
-			<div style={{backgroundColor: hovered ? theme.palette.inputColor : "inherit", border: "1px solid rgba(255,255,255,0.3)", borderRadius: theme.palette?.borderRadius, cursor: "pointer", }} 
+			<div style={{backgroundColor: hovered ? theme.palette.inputColor : "inherit", border: "1px solid rgba(255,255,255,0.3)", borderRadius: theme.palette.borderRadius, cursor: "pointer", }} 
 			>
 				<div style={{display: "flex", marginLeft: 15, marginTop: 15, marginBottom: 15, }} 
 					onClick={() => {
@@ -1323,6 +1321,7 @@ const ConfigureWorkflow = (props) => {
 						}
 
 						if (step.type === "authenticate") {
+							console.log("AUTH STEP: ", step)
 							if (data.must_authenticate === true ) {
 								filled = false
 							} else {
@@ -1384,7 +1383,7 @@ const ConfigureWorkflow = (props) => {
 
   return (
     <div>
-		<div style={{margin: setConfigureWorkflowModalOpen !== undefined ? "0px 50px 0px 50px" : "25px 0px 0px 0px", maxHeight: 475, }}>
+		<div style={{margin: setConfigureWorkflowModalOpen !== undefined ? "0px 50px 0px 50px" : "35px 0px 0px 0px", maxHeight: 475, }}>
 			
 
 	  	{setConfigureWorkflowModalOpen !== undefined ? 
@@ -1394,24 +1393,10 @@ const ConfigureWorkflow = (props) => {
 			: null
 		}
 
-	    <div style={{marginTop: setConfigureWorkflowModalOpen !== undefined ? 10 : 0, }} />
-
-	  	{/*
-	    <WorkflowValidationTimeline 
-			workflow={workflow}
-
-			apps={apps}
-
-			getParents={undefined}
-			execution={undefined}
-		  />
-	    <div style={{marginBottom: 10, }} />
-		*/}
-
       	{requiredActions.length > 0 ? (
       	  <span>
-			<Typography variant="body2" color="textSecondary">
-			  To complete the workflow setup, please configure the following steps. 
+			<Typography variant="body2" style={{}}>
+			  Please configure the following steps to help us complete your workflow. This can also be done later.
 			</Typography>
 
 			{setConfigureWorkflowModalOpen !== undefined ?
@@ -1441,13 +1426,6 @@ const ConfigureWorkflow = (props) => {
 				)
       	      })}
       	    </List>
-
-			{/*
-			<Typography variant="body2" color="textSecondary">
-				Once done, you may continue to the workflow.
-			</Typography>
-			*/}
-
       	  </span>
       	) : null}
 

@@ -9,12 +9,13 @@
 """
 import warnings
 from flask import Blueprint
-from markupsafe import Markup
+from flask import Markup
 from flask import current_app
 from flask import render_template_string
 from flask import url_for
 
-from app.flask_dropzone.utils import get_url
+from .utils import get_url  # noqa
+from .utils import random_filename
 
 #: defined normal file type
 allowed_file_extensions = {

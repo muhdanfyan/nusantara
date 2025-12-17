@@ -1,14 +1,15 @@
-import React, { useEffect, useLayoutEffect, useRef, useState, useContext, memo,  } from "react"
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react"
+
 import { toast } from 'react-toastify';
 import Markdown from 'react-markdown'
-import {getTheme} from '../theme.jsx';
-import ReactJson from "react-json-view-ssr";
+
+import theme from '../theme.jsx';
+import ReactJson from "react-json-view";
 import { isMobile } from "react-device-detect";
 import { BrowserView, MobileView } from "react-device-detect";
-import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
-import { validateJson, GetIconInfo } from "../views/Workflows2.jsx";
-import remarkGfm from 'remark-gfm'
-import { Context } from "../context/ContextApi.jsx";
+import { useParams, useNavigate, Link } from "react-router-dom";
+import { validateJson, GetIconInfo } from "../views/Workflows.jsx";
+
 import {
     Grid,
     TextField,
@@ -23,27 +24,18 @@ import {
     List,
     Collapse,
     ListItemButton,
-    ListItemText,
-    Dialog,
-    DialogTitle,
-    Box,
-    DialogContent,
-    InputAdornment,
-    CircularProgress
+    ListItemText
 } from "@mui/material";
+
 import {
     Link as LinkIcon,
     Edit as EditIcon,
     KeyboardArrowRight as KeyboardArrowRightIcon,
     ExpandMore as ExpandMoreIcon,
-    FileCopy as FileCopyIcon,
-    ChevronLeft,
-    ChevronRight,
-    Search as SearchIcon,
-    Close as CloseIcon
+    FileCopy as FileCopyIcon
 } from "@mui/icons-material";
 import { fontGrid } from "@mui/material/styles/cssUtils.js";
-import SearchBox from "../components/SearchData.jsx";
+import { active } from "d3";
 
 const Body = {
     //maxWidth: 1000,
@@ -54,7 +46,6 @@ const Body = {
     height: "100%",
     color: "white",
     position: "relative",
-	paddingTop: 40, 
     //textAlign: "center",
 };
 
@@ -62,7 +53,6 @@ const dividerColor = "rgb(225, 228, 232)";
 const hrefStyle = {
     color: "rgba(255, 255, 255, 0.8)",
     textDecoration: "none",
-    marginRight: window.location.pathname.includes("/articles/") ? "0.8em" : undefined,
 };
 
 
@@ -87,34 +77,6 @@ const innerHrefStyle = {
     textDecoration: "none",
 };
 
-const noteLabelStyle = {
-	fontWeight: "bold",
-	color: "#f86a3e",
-	display: "block",
-	marginBottom: "5px",
-};
-
-const alertNote = {
-	padding: "10px",
-	borderLeft: "5px solid #f86a3e",
-	backgroundColor: "rgb(26,26,26)",
-};
-
-export const Blockquote = ({ children }) => {
-
-	const textContent = children.map(child =>
-	  child.props && child.props.children ? child.props.children.join('') : child
-	).join('').trim();
-
-	// Maybe some more contents....
-	const isNote = textContent.startsWith("[!TIP]");
-	return (
-	  <blockquote style={isNote ? alertNote : {}}>
-		{isNote && <span style={noteLabelStyle}>Tips:</span>}
-		{isNote ? textContent.replace("[!TIP]", "").trim() : children}
-	  </blockquote>
-	);
-  };
 
 export const CopyToClipboard = (props) => {
     const { text, style, onCopy } = props;
@@ -140,30 +102,20 @@ export const CopyToClipboard = (props) => {
     )
 }
 
-export const Paragraph = (props) => {
-    // Filter out stray HTML artifacts like '>' or '/>' caused by HTML parsing edge-cases
-    const cleanedChildren = React.Children.toArray(props.children).filter((child) => {
-        if (typeof child === 'string') {
-            const trimmed = child.trim();
-            // Remove single '>' or '/>' leftovers
-            if (trimmed === '>' || trimmed === '/>') return false;
-        }
-        return true;
-    });
-
+export const Paragrah = (props) => {
     const element = React.createElement(
         `p`,
         {},
-        cleanedChildren,
+        props.children,
     )
 
-    if (cleanedChildren[0] !== undefined) {
-        if(typeof cleanedChildren[0] === "string") {
-            if (cleanedChildren[0].includes('.mp4')) {
+    if (props.children[0] != undefined) {
+        if(typeof props.children[0] === "string") {
+            if (props.children[0].includes('.mp4')) {
                 return (
                     <div>
                         <video width="640" height="480" controls>
-                            <source src={`${cleanedChildren[0]}`} type="video/mp4" />
+                            <source src={`${props.children[0]}`} type="video/mp4" />
                         </video>
                     </div>
                 )
@@ -173,7 +125,7 @@ export const Paragraph = (props) => {
 
 
     return (
-        <div> 
+        <div class="sdf">
             {element}
         </div>
     )
@@ -201,180 +153,36 @@ export const OuterLink = (props) => {
     );
 }
 
-// Markdown table renderers for improved styling and readability
-export const TableRenderer = (props) => {
-    const { themeMode } = useContext(Context)
-    const theme = getTheme(themeMode)
-        return (
-          <div
-            style={{
-              overflowX: "auto",
-              marginTop: 16,
-              marginBottom: 24,
-              border: "1px solid rgba(255,255,255,0.15)",
-              borderRadius: theme.palette?.borderRadius,
-            }}
-          >
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "separate",
-                borderSpacing: 0,
-                minWidth: 600,
-              }}
-            >
-              {props.children}
-            </table>
-          </div>
-        );
-}
-
-export const TableRowRenderer = (props) => {
-    const { themeMode } = useContext(Context)
-    const theme = getTheme(themeMode)
-    return (
-      <tr
-        style={{
-          borderBottom: "1px solid rgba(255,255,255,0.12)",
-        }}
-      >
-        {props.children}
-      </tr>
-    );
-}
-    
-export const TableHeaderCellRenderer = (props) => {
-    const { themeMode } = useContext(Context)
-    const theme = getTheme(themeMode)
-    return (
-      <th
-        style={{
-          textAlign: "left",
-          padding: "12px 14px",
-          backgroundColor: theme.palette.platformColor,
-          color: theme.palette.textColor,
-          fontWeight: 600,
-          position: "sticky",
-          top: 0,
-          borderBottom: "1px solid rgba(255,255,255,0.2)",
-        }}
-      >
-        {props.children}
-      </th>
-    );
-}
-
-export const TableCellRenderer = (props) => {
-    const { themeMode } = useContext(Context)
-    const theme = getTheme(themeMode)
-    return (
-      <td
-        style={{
-          padding: "10px 14px",
-          verticalAlign: "top",
-          color: theme.palette.textColor,
-          backgroundColor: "transparent",
-        }}
-      >
-        {props.children}
-      </td>
-    );
-}
-
-
 
 export const Img = (props) => {
-	// Find parent container and check width
-    const isArticlePage = window.location.pathname.includes("/articles/")
-    const isFormPage = window.location.pathname.includes("/forms/")
-    const isWorkflowPage = window.location.pathname.includes("/workflows/")
-	var height = "auto" 
-	var width = isArticlePage ? 1000 : isFormPage ? 400: 750
-
-    const { themeMode } = useContext(Context)
-    const theme = getTheme(themeMode)
-
-    const docsImageStyle = {
-		border: isFormPage || isWorkflowPage ? null : "1px solid rgba(255,255,255,0.3)", 
-        borderRadius: theme.palette?.borderRadius, 
-        width: width, 
-        maxWidth: width, 
-        margin: "auto", 
-        marginTop: 10, 
-        marginBottom: 10
-    }
-    
-    const articleImageStyle = {
-        borderRadius: theme.palette?.borderRadius,
-        minWidth: 350, 
-        maxWidth: "100%", 
-        textAlign: "center", 
-        margin: "auto", 
-        marginTop: 20, 
-        marginBottom: 20, 
-    }
-
-	if (props.height !== undefined && props.height !== null) {
-		height = props.height
-	}
-
-	if (props.width !== undefined && props.width !== null) {
-		width = props.width
-	}
-
-    return(
-	  <div style={{width: "100%", textAlign: "center", }}> 
-		  <img 
-			style={isArticlePage ? articleImageStyle : docsImageStyle} 
-			alt={props.alt} 
-			src={props.src} 
-		  />
-	  </div>
-	)
+    return <img style={{ borderRadius: theme.palette.borderRadius, width: 750, maxWidth: "100%", marginTop: 15, marginBottom: 15, }} alt={props.alt} src={props.src} />;
 }
-
 
 export const CodeHandler = (props) => {
     const propvalue = props.value !== undefined && props.value !== null ? props.value : props.children !== undefined && props.children !== null && props.children.length > 0 ? props.children[0] : ""
 
     const validate = validateJson(propvalue)
-    const {themeMode } = useContext(Context)
-    const theme = getTheme(themeMode)
 
     var newprop = propvalue
     if (validate.valid === false) {
         // Check if https://shuffler.io in the url
         // if so, then we change it for the current url	
-        if (propvalue.includes("https://shuffler.io/api")) {
-            newprop = propvalue.replace("https://shuffler.io/api", window.location.origin+"/api")
-
-	
-			const foundurl = localStorage.getItem("globalUrl")
-			if (foundurl !== undefined && foundurl !== null && foundurl !== "") {
-				newprop = propvalue.replace("https://shuffler.io/api", foundurl+"/api")
-			}
+        if (propvalue.includes("https://shuffler.io")) {
+            newprop = propvalue.replace("https://shuffler.io", window.location.origin)
         }
+
+        // Check if it contains Bearer APIKEY
+        // If so, replace apikey
+        //if (newprop.includes("Bearer APIKEY")) {
+        //	newprop = newprop.replace("Bearer APIKEY", "Bearer API
+        //}
     }
 
     // Need to check if it's singletick or multi
     if (props.inline === true) {
-        // Enhanced inline code styling for readability and long strings
+        // Show it inline
         return (
-            <span
-                style={{
-                    backgroundColor: theme.palette.inputColor,
-                    border: "1px solid rgba(255,255,255,0.15)",
-                    borderRadius: "6px",
-                    padding: "1px 6px",
-                    margin: "0 2px",
-                    display: "inline-block",
-                    lineHeight: 1.6,
-                    fontSize: "0.95em",
-                    fontFamily:
-                        'SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                    whiteSpace: "pre-wrap",
-                }}
-            >
+            <span style={{ backgroundColor: theme.palette.inputColor, display: "inline", whiteSpace: "pre-wrap", padding: "6px 3px 6px 3px", }}>
                 {newprop}
             </span>
         )
@@ -389,7 +197,7 @@ export const CodeHandler = (props) => {
                 backgroundColor: theme.palette.inputColor,
                 overflowY: "auto",
                 // Have it inline
-                borderRadius: theme.palette?.borderRadius,
+                borderRadius: theme.palette.borderRadius,
             }}
         >
             {validate.valid === true ?
@@ -426,13 +234,10 @@ export const CodeHandler = (props) => {
 }
 
 const Docs = (defaultprops) => {
-    const { globalUrl, selectedDoc, serverside, serverMobile, isLoggedIn, isLoaded, userdata } = defaultprops;
-
-    const { searchBarModalOpen, setSearchBarModalOpen, isDocSearchModalOpen, setIsDocSearchModalOpen, leftSideBarOpenByClick } = useContext(Context);
+    const { globalUrl, selectedDoc, serverside, serverMobile } = defaultprops;
 
     let navigate = useNavigate();
-    const location = useLocation();
-    const pathname = location.pathname
+
     // Quickfix for react router 5 -> 6 
     const params = useParams();
     //var props = JSON.parse(JSON.stringify(defaultprops))
@@ -440,11 +245,7 @@ const Docs = (defaultprops) => {
     props.match = {}
     props.match.params = params
 
-	window.title = "Shuffle - Documentation"
-
     //console.log("PARAMS: ", params)
-    const { themeMode } = useContext(Context)
-    const theme = getTheme(themeMode)
 
     const [mobile, setMobile] = useState(serverMobile === true || isMobile === true ? true : false);
     const [data, setData] = useState("");
@@ -467,79 +268,16 @@ const Docs = (defaultprops) => {
         serverside === true ? "" : window.location.href
     );
     const [hashRendered, setHashRendered] = React.useState(false)
-    const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [activeSubItem, setActiveSubItem] = useState(false);
+
     const headingElementsRef = useRef({})
-    const [hasRedirected, setHasRedirected] = useState(false)
-    var isArticlePage = window.location.pathname.includes("/articles/") || window.location.pathname === "/articles" ? true : false;
-    const searchFieldRef = useRef(null);
-
-    const handleDocRedirectForPartners = () => {
-        if (hasRedirected) return;
-
-        if (
-            userdata &&
-            userdata?.org_status?.includes("integration_partner") &&
-            userdata?.active_org?.branding?.documentation_link?.length > 0
-        ) {
-            const docLink = userdata?.active_org?.branding?.documentation_link;
-            if (docLink && docLink !== "") {
-                setHasRedirected(true);
-                if (docLink.startsWith('http')) {
-                    window.location.replace(docLink);
-                } else {
-                    navigate(docLink);
-                }
-            }
-        }
-    };
-
 
     useEffect(() => {
-        if (isLoggedIn && isLoaded) {
-            handleDocRedirectForPartners()
-        }
+        //if (params["key"] === undefined) {
+        //	navigate("/docs/about")
+        //	return
+        //}
+    }, [])
 
-    }, [isLoggedIn, isLoaded]);
-
-    useEffect(() => {
-        fetchDocList();
-        setSidebarOpen(false);
-
-		if (props.match.params === undefined || props.match.params === null) {
-			return
-		}
-
-		const propkey = props.match.params.key
-		if (propkey === undefined || propkey === null) {
-			return
-		}
-
-		console.log("PROPKEY: ", propkey)
-		if (location.pathname.includes("/docs/")) {
-			if (propkey === "cookie_policy" || propkey === "compliance" || propkey === "privacy_policy" || propkey === "terms_of_service") {
-				navigate(`/legal/${propkey}`)
-			}
-
-			if (propkey === "app_creation") {
-				navigate('/docs/apps#app-creation-introduction')
-			}
-
-            if (propkey === "api") {
-                navigate('/docs/API')
-            }
-		}
-
-        
-    }, [location]);
-
-    useEffect(() => {
-        return () => {
-            setIsDocSearchModalOpen(false);
-            setSearchBarModalOpen(false);
-        };
-    }, []); 
-    
     const handleClick = (event) => {
         setAnchorEl(event.currentTarget);
     }
@@ -630,9 +368,9 @@ const Docs = (defaultprops) => {
         if (hash.includes('?')) {
             hash = hash.split('?')[0]
         }
-
         if (hash) {
-            const element = document.getElementById(hash.toLowerCase())
+            console.log("HASH: ", hash)
+            const element = document.getElementById(hash)
             if (element) {
                 element.scrollIntoView({
                     behavior: "instant",
@@ -668,77 +406,6 @@ const Docs = (defaultprops) => {
         }
         return headings;
     };
-
-    const modalView = (
-        <Dialog
-          open={searchBarModalOpen && isDocSearchModalOpen}
-          onClose={() => {
-            setSearchBarModalOpen(false);
-            if (searchFieldRef.current) {
-                searchFieldRef.current.blur();
-            }
-          }}
-          PaperProps={{
-            sx: {
-              color: theme.palette.DialogStyle.color,
-              minWidth: "750px",
-              minHeight: "180px",
-              maxHeight: "85vh",
-              borderRadius: theme.palette.DialogStyle.borderRadius,
-              border: "1px solid var(--Container-Stroke, #494949)",
-              background: theme.palette.DialogStyle.backgroundColor,
-              boxShadow: "0px 16px 24px 8px rgba(0, 0, 0, 0.25)",
-              position: "fixed",
-              top: "70px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              '& .MuiDialogContent-root': {
-                backgroundColor: theme?.palette?.DialogStyle?.backgroundColor,
-                },
-                '& .MuiDialogTitle-root': {
-                backgroundColor: theme?.palette?.DialogStyle?.backgroundColor,
-                },
-            },
-          }}
-          sx={{
-            zIndex: 50005,
-            '& .MuiBackdrop-root': {
-              backgroundColor: 'rgba(0, 0, 0, 0.8)',
-            },
-          }}
-        >
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", px: 2, pr: 3, pt: 2 }}>
-            <DialogTitle
-              sx={{ 
-                color: theme.palette.DialogStyle.color,
-                p: 0,
-                m: 0,
-                ml: 1.5,
-                fontFamily: theme.typography.fontFamily,
-              }}
-            >
-              Search for Documentation
-            </DialogTitle>
-            <IconButton 
-              onClick={() => setSearchBarModalOpen(false)}
-              sx={{ 
-                color: 'white',
-                '&:hover': {
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)'
-                }
-              }}
-            >
-              <CloseIcon />
-            </IconButton>
-          </Box>
-          <DialogContent>
-            <Box sx={{ pt: 3 }}>
-              <SearchBox globalUrl={globalUrl} serverside={serverside} userdata={userdata} />
-            </Box>
-          </DialogContent>
-          <Divider sx={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}/>
-        </Dialog>
-      );
 
 
     // extract TOC from actual markdown
@@ -778,13 +445,8 @@ const Docs = (defaultprops) => {
     }
 
     const SidebarPaperStyle = {
-        backgroundColor: isArticlePage ? "transparent" : theme.palette.backgroundColor,
-        border: isArticlePage ? "none" : undefined,
-        borderRadius: isArticlePage ? "none" : undefined,
-        boxShadow: isArticlePage ? "none" : undefined,
+        backgroundColor: "rgb(26,26,26)",
         backgroundImage: "none",
-        width: isArticlePage ? "100%" : undefined,
-        height: isArticlePage ? "100%" : undefined,
         overflowX: "hidden",
         position: "relative",
         paddingLeft: 15,
@@ -792,13 +454,11 @@ const Docs = (defaultprops) => {
         minHeight: "80vh",
     };
 
-
     const Heading = (props) => {
         const [hover, setHover] = useState(false);
-
-        var id = (props?.children?.[0] ?? props.children ?? '').toString().toLowerCase();
-        if (props?.level <= 3) {
-            id = props?.children?.[0]?.toLowerCase().toString().replaceAll(" ", "-") ?? '';
+        var id = props.children[0].toLowerCase().toString()
+        if (props.level <= 3) {
+            id = props.children[0].toLowerCase().toString().replaceAll(" ", "-");
         }
 
         const element = React.createElement(
@@ -825,10 +485,10 @@ const Docs = (defaultprops) => {
             extraInfo = (
                 <div
                     style={{
-                        backgroundColor: theme.palette.textFieldStyle.backgroundColor,
+                        backgroundColor: theme.palette.inputColor,
                         padding: 15,
-                        borderRadius: theme.palette?.textFieldStyle.borderRadius,
-                        marginBottom: isArticlePage ? 25 : 30,
+                        borderRadius: theme.palette.borderRadius,
+                        marginBottom: 30,
                         display: "flex",
                     }}
                 >
@@ -841,7 +501,7 @@ const Docs = (defaultprops) => {
                                     href={selectedMeta.link}
                                     style={{ textDecoration: "none", color: "#f85a3e" }}
                                 >
-                                    <Button variant="outlined" color="secondary">
+                                    <Button style={{ color: "white", }} variant="outlined" color="secondary">
                                         <EditIcon /> &nbsp;&nbsp;Edit
                                     </Button>
                                 </a>
@@ -920,8 +580,7 @@ const Docs = (defaultprops) => {
                     <Divider
                         style={{
                             width: "90%",
-                            marginTop: 60,
-							marginBottom: isArticlePage ? 40 : 20, 
+                            marginTop: 40,
                             backgroundColor: theme.palette.inputColor,
                         }}
                     />
@@ -931,29 +590,16 @@ const Docs = (defaultprops) => {
                     marginBlock: "0.85em", alignItems: "center"
                 }}>
                     {element}
-                    <Link to={`#${id}`}
-                     onClick={(e) => {
-                        e.preventDefault(); // Prevent default navigation
-                        document.getElementById(id)?.scrollIntoView({
-                            behavior: 'smooth'
-                        });
-
-                        const url = `${window.location.origin}${window.location.pathname}#${id}`;
-                        navigator.clipboard.writeText(url);
-                        toast("Link copied to clipboard", {
-                            position: "bottom-center",
-                            autoClose: 2000,
-                        });
-                    }}
-                    style={{
+                    <Link to={`#${id}`} style={{
                         textDecoration: "none", color: "white",
                         paddingLeft: "0.3em", rotate: "-30deg",
                         paddingTop: "0.9em", display: props.level === 1 ? "none" : "block",
                     }}>
-                        <LinkIcon style={{color: theme.palette.textColor}} />
+                        <LinkIcon />
                     </Link>
                 </div>
-                {isArticlePage ? (userdata?.support ? extraInfo : "") : extraInfo}
+
+                {extraInfo}
             </Typography>
         )
     }
@@ -961,73 +607,29 @@ const Docs = (defaultprops) => {
 
     const SideBar = {
         width: "17%",
-        borderRight: !isArticlePage ? "1px solid rgba(255,255,255,0.3)" : undefined,
-        minWidth: isArticlePage ? "250px" : "17%",
-        maxWidth: isArticlePage ? "250px" : "17%",
-        marginLeft: isArticlePage ? sidebarOpen ? 40 : 50 : undefined,
         position: "sticky",
-        top: isArticlePage ? 120 : 50,
-        paddingTop: isArticlePage ? "0.65em" : "0.25em",
-        paddingRight: isArticlePage ? "1em" : undefined,
-        minHeight: isArticlePage ? "80vh" : "95vh",
-        maxHeight: isArticlePage ? "80vh" : "95vh",
+        top: 50,
+        paddingTop: "0.25em",
+        minHeight: "95vh",
+        maxHeight: "95vh",
         overflowX: "hidden",
         overflowY: "auto",
         zIndex: 1000,
-        backgroundColor: isArticlePage ? "#212121" : undefined,
-        borderRadius: isArticlePage ? theme.palette?.borderRadius : undefined,
-        transition: isArticlePage ? "width 0.3s ease, min-width 0.3s ease" : undefined,
-    };
-
-    const sideBarToggleButton = {
-        position: "absolute",
-        bottom: sidebarOpen ? 20 : "50%",
-        right: sidebarOpen ? 30 : 21,
-        zIndex: 1000,
-        backgroundColor: "#212121",
-        border: "1px solid rgba(255,255,255,0.3)",
-        borderRadius: "50%",
-        width: 40,
-        height: 40,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "pointer",
-        transition: "transform 0.3s ease",
-        "&:hover": {
-            backgroundColor: "#2c2c2c",
-        }
-    };
-
-    const collapsedSideBar = {
-        ...SideBar,
-        width: "40px",
-        minWidth: "40px",
-        maxWidth: "40px",
-        overflow: "hidden",
+        //borderRight: "1px solid rgba(255,255,255,0.3)",
     };
 
     const IndexBar = {
         alignSelf: "flex-start",
         position: "sticky",
-        top: 120,
+        top: 80,
         overflowY: "auto",
         minHeight: "93vh",
         maxHeight: "93vh",
         marginTop: 70,
-		maxWidth: 250, 
-		overflow: "hidden", 
     }
 
-    const fetchDocList = (resetCache = false) => {
-        var url = `${globalUrl}/api/v1/docs`
-		if (location.pathname.includes("/legal")) {
-			url = `${globalUrl}/api/v1/docs?folder=legal&resetCache=${resetCache}`
-		} else if (location.pathname.includes("/articles")) {
-			url = `${globalUrl}/api/v1/docs?folder=articles&resetCache=${resetCache}`
-		}
-
-        fetch(url, {
+    const fetchDocList = () => {
+        fetch(`${globalUrl}/api/v1/docs`, {
             method: "GET",
             headers: {
                 "Content-Type": "application/json",
@@ -1047,19 +649,8 @@ const Docs = (defaultprops) => {
             .catch((error) => { });
     };
 
-    const fetchDoc = (docId) => {
-		if (docId === undefined) {
-			return 
-		}
-
-        var url = `${globalUrl}/api/v1/docs/${docId}`
-		if (location.pathname.includes("/legal")) {
-			url = `${globalUrl}/api/v1/docs/${docId}?folder=legal`
-		} else if (location.pathname.includes("/articles")) {
-			url = `${globalUrl}/api/v1/docs/${docId}?folder=articles`
-		}
-
-        fetch(url, {
+    const fetchDocs = (docId) => {
+        fetch(`${globalUrl}/api/v1/docs/${docId}`, {
             method: "GET",
             headers: {
                 "Content-Type": "application/json",
@@ -1073,33 +664,20 @@ const Docs = (defaultprops) => {
                 }
 
                 if (responseJson.success && responseJson.reason !== undefined) {
-
-                    if(isArticlePage && window.location.pathname.includes("/articles/")) {
-                        if (responseJson.reason !== undefined && responseJson.reason !== null && responseJson.reason.includes("404: Not Found")) {
-                            setData("# Error\nThis page doesn't exist.");
-                            toast("This page doesn't exist. Redirecting to the latest article...", {
-                                position: "bottom-center",
-                                autoClose: 2000,
-                            });
-                            setTimeout(() => {
-                                navigate(`/articles/2.0_release`)
-                            }, 2000)
-                            return
-                        }
-                    }
                     // Find <img> tags and translate them into ![]() format
                     const imgRegex = /<img.*?src="(.*?)"/g;
                     const tocRegex = /^## Table of contents[\s\S]*?(?=^## )|^## Table of contents[\s\S]*$/gm;
-                    const newdata = responseJson.reason.replace(imgRegex, '![]($1)').replace(tocRegex, "");
+                    const newdata = responseJson.reason.replace(imgRegex, '![]($1)')
+                        .replace(tocRegex, "");
                     setData(newdata);
                     if (docId === undefined) {
-                        document.title = isArticlePage ? "Shuffle Articles introduction" : "Shuffle documentation";
+                        document.title = "Shuffle documentation introduction";
                     } else {
-                        document.title = "Shuffle " + docId.replace("_", " ") + (isArticlePage ? " articles" : " documentation");
+                        document.title = "Shuffle " + docId + " documentation";
                     }
 
-                    if (responseJson.reason !== undefined && responseJson.reason !== null && responseJson.reason.includes("404: Not Found") && !isArticlePage) {
-                        //navigate("/docs")
+                    if (responseJson.reason !== undefined && responseJson.reason !== null && responseJson.reason.includes("404: Not Found")) {
+                        navigate("/docs")
                         return
                     }
 
@@ -1128,11 +706,6 @@ const Docs = (defaultprops) => {
             .catch((error) => { });
     };
 
-    const handleResetCache = () => {
-        fetchDocList(true);
-        toast("Cache has been reset");
-    }
-
     if (firstrequest) {
         setFirstrequest(false);
         if (!serverside) {
@@ -1155,29 +728,11 @@ const Docs = (defaultprops) => {
                 //	return null
                 //}
                 //
-                if (props.match.params.key === undefined && isArticlePage) {
-                    fetch(`${globalUrl}/api/v1/articles`, {
-                        method: "GET",
-                        headers: {
-                            "Content-Type": "application/json",
-                            Accept: "application/json",
-                        },
-                    })
-                        .then((response) => response.json())
-                        .then((responseJson) => {
-                            if (responseJson.success && responseJson.list && responseJson.list.length > 0) {
-                                // Navigate to the latest article
-                                if (responseJson?.list[0]?.name) {
-                                    navigate(`/articles/${responseJson?.list[0].name}`);
-                                }
-                            }
-                        })
-                        .catch((error) => {
-                            console.error("Error fetching articles:", error);
-                        });
+                if (props.match.params.key === undefined) {
+
                 } else {
                     console.log("DOCID: ", props.match.params.key)
-                    fetchDoc(props.match.params.key)
+                    fetchDocs(props.match.params.key)
                 }
             }
         }
@@ -1186,19 +741,101 @@ const Docs = (defaultprops) => {
     // Handles search-based changes that origin from outside this file
     if (serverside !== true && window.location.href !== baseUrl) {
         setBaseUrl(window.location.href);
-        fetchDoc(props.match.params.key);
+        fetchDocs(props.match.params.key);
     }
 
+    //    const parseElementScroll = () => {
+    //        const offset = 45;
+    //        var parent = document.getElementById("markdown_wrapper_outer");
+    //        if (parent !== null) {
+    //            //console.log("IN PARENT")
+    //            var elements = parent.getElementsByTagName("h2");
+    //
+    //            const name = window.location.hash
+    //                .slice(1, window.location.hash.length)
+    //                .toLowerCase()
+    //                .split("%20")
+    //                .join(" ")
+    //                .split("_")
+    //                .join(" ")
+    //                .split("-")
+    //                .join(" ")
+    //                .split("?")[0]
+    //
+    //            //console.log(name)
+    //            var found = false;
+    //            for (var key in elements) {
+    //                const element = elements[key];
+    //                if (element.innerHTML === undefined) {
+    //                    continue;
+    //                }
+    //
+    //                // Fix location..
+    //                if (element.innerHTML.toLowerCase() === name) {
+    //                    //console.log(element.offsetTop)
+    //                    element.scrollIntoView({ behavior: "smooth" });
+    //                    //element.scrollTo({
+    //                    //	top: element.offsetTop+offset,
+    //                    //	behavior: "smooth"
+    //                    //})
+    //                    found = true;
+    //                    //element.scrollTo({
+    //                    //	top: element.offsetTop-100,
+    //                    //	behavior: "smooth"
+    //                    //})
+    //                }
+    //            }
+    //
+    //            // H#
+    //            if (!found) {
+    //                elements = parent.getElementsByTagName("h3");
+    //                //console.log("NAMe: ", name)
+    //                found = false;
+    //                for (key in elements) {
+    //                    const element = elements[key];
+    //                    if (element.innerHTML === undefined) {
+    //                        continue;
+    //                    }
+    //
+    //                    // Fix location..
+    //                    if (element.innerHTML.toLowerCase() === name) {
+    //                        element.scrollIntoView({ behavior: "smooth" });
+    //                        //element.scrollTo({
+    //                        //	top: element.offsetTop-offset,
+    //                        //	behavior: "smooth"
+    //                        //})
+    //                        found = true;
+    //                        //element.scrollTo({
+    //                        //	top: element.offsetTop-100,
+    //                        //	behavior: "smooth"
+    //                        //})
+    //                    }
+    //                }
+    //            }
+    //        }
+    //        //console.log(element)
+    //
+    //        //console.log("NAME: ", name)
+    //        //console.log(document.body.innerHTML)
+    //        //   parent = document.getElementById(parent);
+    //
+    //        //var descendants = parent.getElementsByTagName(tagname);
+    //
+    //        // this.scrollDiv.current.scrollIntoView({ behavior: 'smooth' });
+    //
+    //        //$(".parent").find("h2:contains('Statistics')").parent();
+    //    };
+
     const markdownStyle = {
-        color: theme.palette.textColor,
+        color: "rgba(255, 255, 255, 0.90)",
         overflow: "hidden",
         paddingBottom: 100,
         margin: "auto",
         maxWidth: "100%",
         minWidth: "100%",
+        overflow: "hidden",
         fontSize: isMobile ? "1.3rem" : "1.1rem",
     };
-
 
     const CustomButton = (props) => {
         const { title, icon, link } = props
@@ -1210,7 +847,7 @@ const Docs = (defaultprops) => {
                 target="_blank"
                 style={{ textDecoration: "none", color: "inherit", flex: 1, margin: 10, }}
             >
-                <div style={{ cursor: hover ? "pointer" : "default", borderRadius: theme.palette?.borderRadius, flex: 1, border: "1px solid rgba(255,255,255,0.3)", backgroundColor: hover ? theme.palette.surfaceColor : theme.palette.inputColor, padding: 25, }}
+                <div style={{ cursor: hover ? "pointer" : "default", borderRadius: theme.palette.borderRadius, flex: 1, border: "1px solid rgba(255,255,255,0.3)", backgroundColor: hover ? theme.palette.surfaceColor : theme.palette.inputColor, padding: 25, }}
                     onClick={(event) => {
                         if (link === "" || link === undefined) {
                             event.preventDefault()
@@ -1250,7 +887,7 @@ const Docs = (defaultprops) => {
 
         return (
             <Link to={link} style={hrefStyle}>
-                <div style={{ width: "100%", height: 80, cursor: hover ? "pointer" : "default", borderRadius: theme.palette?.borderRadius, border: "1px solid rgba(255,255,255,0.3)", backgroundColor: hover ? theme.palette.surfaceColor : theme.palette.inputColor, }}
+                <div style={{ width: "100%", height: 80, cursor: hover ? "pointer" : "default", borderRadius: theme.palette.borderRadius, border: "1px solid rgba(255,255,255,0.3)", backgroundColor: hover ? theme.palette.surfaceColor : theme.palette.inputColor, }}
                     onMouseOver={() => {
                         setHover(true)
                     }}
@@ -1270,7 +907,6 @@ const Docs = (defaultprops) => {
         marginTop: 25,
     }
 
-  	const showPartnerLogo = userdata?.org_status?.includes("integration_partner") && userdata?.active_org?.image !== undefined && userdata?.active_org?.image !== null && userdata?.active_org?.image.length > 0 
     const mainpageInfo =
         <div style={{
             color: "rgba(255, 255, 255, 0.65)",
@@ -1286,12 +922,10 @@ const Docs = (defaultprops) => {
             <Typography variant="h4" style={{ textAlign: "center", marginTop: 20 }}>
                 Documentation
             </Typography>
-			{showPartnerLogo === true ? null : 
-				<div style={{ display: "flex", marginTop: 25, }}>
-					<CustomButton title="Talk to Support" icon=<img src="/images/Shuffle_logo_new.png" style={{ height: 35, width: 35, border: "", borderRadius: theme.palette?.borderRadius, }} /> link="https://shuffler.io/contact?category=support" />
-					<CustomButton title="Ask the community" icon=<img src="/images/social/discord.png" style={{ height: 35, width: 35, border: "", borderRadius: theme.palette?.borderRadius, }} /> link="https://discord.gg/B2CBzUm" />
-				</div>
-			}
+            <div style={{ display: "flex", marginTop: 25, }}>
+                <CustomButton title="Talk to Support" icon=<img src="/images/Shuffle_logo_new.png" style={{ height: 35, width: 35, border: "", borderRadius: theme.palette.borderRadius, }} /> />
+                <CustomButton title="Ask the community" icon=<img src="/images/social/discord.png" style={{ height: 35, width: 35, border: "", borderRadius: theme.palette.borderRadius, }} /> link="https://discord.gg/B2CBzUm" />
+            </div>
 
             <div style={{ textAlign: "left" }}>
                 <Typography variant="h6" style={headerStyle} >Tutorial</Typography>
@@ -1326,8 +960,6 @@ const Docs = (defaultprops) => {
             </div>
         </div>
 
-
-
     const markdownComponents = {
         img: Img,
         code: CodeHandler,
@@ -1338,103 +970,23 @@ const Docs = (defaultprops) => {
         h5: Heading,
         h6: Heading,
         a:  OuterLink,
-        p:  Paragraph,
-        blockquote: Blockquote,
-        table: TableRenderer,
-        tr: TableRowRenderer,
-        th: TableHeaderCellRenderer,
-        td: TableCellRenderer,
+        p:  Paragrah,
     }
-
-
-    const activeHrefStyleToc2 = {
-        ...hrefStyleToc2,
-        color: "#f86a3e",
-        fontFamily: theme.typography.fontFamily,
-    };
-
-    const activeListItemStyle = {
-        backgroundColor: "rgba(248, 106, 62, 0.08)", // Slight orange tint
-        marginRight: window.location.pathname.includes("/articles/") ? "0.8em" : undefined,
-        borderLeft: "3px solid #f86a3e",
-        paddingLeft: "13px", // Compensate for the border
-    };
-
-    const toggleSidebar = () => {
-        setSidebarOpen(!sidebarOpen);
-    };
-    
 
 
     // PostDataBrowser Section
     const postDataBrowser =
         list === undefined || list === null ? null : (
             <div style={Body}>
-                <div style={!isArticlePage ? SideBar : (sidebarOpen ? SideBar : collapsedSideBar)}>
+                <div style={SideBar}>
                     <Paper style={SidebarPaperStyle}>
-                        {modalView}
-                        {
-                            !isArticlePage && (
-                                <TextField
-                                    variant="outlined"
-                                    placeholder="Search Docs..."
-                                    size="small"
-                                    onClick={() => {
-                                        setIsDocSearchModalOpen(true)
-                                        setSearchBarModalOpen(true)
-                                    }}
-                                    inputRef={searchFieldRef}
-                                    InputProps={{
-                                        endAdornment: (
-                                            <InputAdornment position="end">
-                                                <SearchIcon style={{ color: "white" }} />
-                                            </InputAdornment>
-                                        ),
-                                        style: {
-                                            backgroundColor: theme.palette.platformColor,
-                                            borderRadius: 4,
-                                            fontSize: 18,
-                                            color: theme.palette.textColor,
-                                        },
-                                    }}
-                                    style={{
-                                        marginTop: 10,
-                                        marginLeft: 10,
-                                        borderRadius: 4,
-                                        width: !isLoggedIn ? "14%" : !leftSideBarOpenByClick ?  "12%" : "11%",
-                                        maxWidth: "285px",
-                                        position: "fixed",
-                                        zIndex: 1100,
-                                    }}
-                                    inputProps={{
-                                        readOnly: true,
-                                    }}
-                                />
-                            )
-                        }
-                        <List style={{ 
-                            listStyle: "none", 
-                            paddingLeft: "0",
-                            paddingTop: !isArticlePage ? "60px" : undefined,
-                            paddingBottom: !isArticlePage ? "30px" : undefined,
-                            display: isArticlePage ? sidebarOpen ? "block" : "none" : undefined,
-                            opacity: isArticlePage ? sidebarOpen ? 1 : 0 : undefined,
-                            transition: isArticlePage ? "opacity 0.3s ease" : undefined,
-                            height: isArticlePage ? "90%" : undefined,  
-                            }}>
+                        <List style={{ listStyle: "none", paddingLeft: "0" }}>
                             {list.map((data, index) => {
                                 const item = data.name;
                                 if (item === undefined) {
                                     return null;
                                 }
-
-                                var path = "/docs/" + item;
-								if (location.pathname.includes("/legal")) {
-									path = "/legal/" + item
-								} else if (location.pathname.includes("/articles")) {
-									path = "/articles/" + item
-								}
-
+                                const path = "/docs/" + item;
                                 const newname =
                                     item.charAt(0).toUpperCase() +
                                     item.substring(1).split("_").join(" ").split("-").join(" ");
@@ -1446,63 +998,23 @@ const Docs = (defaultprops) => {
                                         <ListItemButton
                                             component={Link}
                                             key={index}
-                                            style={{
-                                                ...hrefStyle,
-                                                ...(itemMatching ? activeListItemStyle : {}),
-                                            }}
+                                            style={hrefStyle}
                                             to={path}
                                         >
                                             <ListItemText
-                                                style={{ 
-                                                    color: itemMatching ? "#f86a3e" : theme.palette.textColor,
-                                                    flex: 1,
-                                                }}
-                                                primary={
-                                                    <Typography
-                                                        style={{
-                                                            whiteSpace: "nowrap",
-                                                            overflow: "hidden",
-                                                            color : "inherit",
-                                                            textOverflow: "ellipsis",
-                                                            fontSize: "18px",
-                                                        }}
-                                                    >
-                                                        {newname}
-                                                    </Typography>
-                                                }
-                                            />
-                                            <KeyboardArrowRightIcon 
-                                                style={{ 
-                                                    color: itemMatching ? "#f86a3e" : "inherit",
-                                                    fontSize: "1.1rem",
-                                                    marginRight: "-6px",
-                                                }}
-                                            />
+                                                style={{ color: itemMatching ? "#f86a3e" : "inherit" }}
+                                                variant="body1"
+                                            >
+                                                {newname}
+                                            </ListItemText>
                                         </ListItemButton>
                                     </li>
                                 );
                             })}
                         </List>
-                        {
-                            isArticlePage && (
-                                <IconButton
-                                    onClick={toggleSidebar}
-                                    style={sideBarToggleButton}
-                                >
-                                    {sidebarOpen ? <ChevronLeft /> : <ChevronRight />}
-                                </IconButton>
-                            )
-                        }
                     </Paper>
                 </div>
-                <div style={{
-                    width: isArticlePage ? sidebarOpen ? "60%" : "70%" : "60%", 
-                    margin: isArticlePage ? sidebarOpen ? "0 0px 30px 30px" : "0 0px 30px 60px" : "30px 0px 30px 30px", 
-                    overflow: "hidden", 
-                    paddingRight: 50, 
-                    paddingLeft: 40,
-                    transition: "width 0.3s ease, margin 0.3s ease",
-                }}>
+                <div style={{ width: "60%", margin: "30px 0px 30px 30px", overflow: "hidden", paddingRight: 50, paddingLeft: 40 }}>
                     {props.match.params.key === undefined ?
                         mainpageInfo
                         :
@@ -1510,10 +1022,8 @@ const Docs = (defaultprops) => {
                             <Markdown
                                 components={markdownComponents}
                                 id="markdown_wrapper"
-                                className={"style.reactMarkdown"}
                                 escapeHtml={false}
                                 skipHtml={false}
-                                remarkPlugins={[remarkGfm]}
                                 style={{
                                     maxWidth: "100%", minWidth: "100%",
                                 }}
@@ -1524,51 +1034,35 @@ const Docs = (defaultprops) => {
                     }
                 </div>
                 <div style={IndexBar}>
-                     {userdata?.support && isArticlePage && (
-                        <Button 
-                            variant="contained" 
-                            color="secondary" 
-                            onClick={handleResetCache}
-                            style={{marginBottom: "15px"}}
-                        >
-                            Reset Cache
-                        </Button>
-                    )}
                     {tocLines.length > 0 ?
                         (
-                            <h4 style={{ fontWeight: 600, margin: 0, fontSize: "16px", marginBottom: "8px", color: theme.palette.text.primary, }}>Table Of Content</h4>
+                            <h4 style={{ fontWeight: 600, margin: 0, fontSize: "16px", marginBottom: "8px" }}>Table Of Content</h4>
 
                         ) : null}
-                    <div
-                    style={{
-                        overflowY: "auto",
-                        maxHeight: "90vh",
-                    }}>
+                    <nav>
                         {tocLines.map((data, index) => {
                             return (
-                                <div className="toc"
-								>
+                                <div className="toc">
                                     <ListItemButton
                                         key={data.text}
                                         href={`#${data.id}`}
                                         style={{
+                                            color: activeId === data.id ? "#f86a3e" : "inherit",
+                                            textDecoration: "none",
                                             fontSize: "14px",
                                             fontWeight: 400,
-											padding: isArticlePage ? "4px 0" : "4px 8px 4px 8px",
-                                            paddingLeft: isArticlePage ? "0" : "8px",
-                                            paddingRight: isArticlePage ? "0" : "8px",
+                                            padding: "4px 0",
+                                            paddingLeft: "8px",
+                                            paddingRight: "8px",
                                             lineHeight: "20px",
                                         }}
                                         onClick={(e) => {
                                             handleCollapse(index)
-                                            setActiveId(data.id)
                                         }}
                                     >
-                                        <Typography style={{ fontSize: 14, fontWeight: 400, color: activeId === data.id ? "#f86a3e" : theme.palette.textColor, }}>
-                                            {data.title}
-                                        </Typography>
+                                        {data.title}
                                         {data.items.length > 0 ? (
-                                            <>{isopen === index ? <ExpandMoreIcon style={{color: theme.palette.text.secondary}} /> : <KeyboardArrowRightIcon style={{color: theme.palette.text.secondary}} />}</>
+                                            <>{isopen == index ? <ExpandMoreIcon /> : <KeyboardArrowRightIcon />}</>
                                         ) : null}
                                     </ListItemButton>
                                     {
@@ -1580,12 +1074,8 @@ const Docs = (defaultprops) => {
                                                     return (
                                                         <ListItemButton
                                                             key={i}
-                                                            style={activeSubItem === d.id ? activeHrefStyleToc2 : {...hrefStyleToc2, color: theme.palette.text.secondary,  fontFamily: theme.typography.fontFamily,}}
+                                                            style={hrefStyleToc2}
                                                             href={`#${d.id}`}
-                                                            onClick={(e) => {
-                                                                // e.preventDefault()
-                                                                setActiveSubItem(d.id)
-                                                            }}
                                                         >
                                                             {d.title}
                                                         </ListItemButton>
@@ -1598,7 +1088,7 @@ const Docs = (defaultprops) => {
 
                             )
                         })}
-                    </div>
+                    </nav>
                 </div >
 
             </div >
@@ -1626,7 +1116,7 @@ const Docs = (defaultprops) => {
                         color="primary"
                         onClick={handleClick}
                     >
-                        <div style={{ color: "white" }}>More {isArticlePage ? "articles" : "docs"}</div>
+                        <div style={{ color: "white" }}>More docs</div>
                     </Button>
                     <Menu
                         id="simple-menu"
@@ -1642,7 +1132,7 @@ const Docs = (defaultprops) => {
                                 return null;
                             }
 
-                            const path = isArticlePage ? "/articles/" + item : "/docs/" + item;
+                            const path = "/docs/" + item;
                             const newname =
                                 item.charAt(0).toUpperCase() +
                                 item.substring(1).split("_").join(" ").split("-").join(" ");
@@ -1651,8 +1141,7 @@ const Docs = (defaultprops) => {
                                     key={index}
                                     style={{ color: "white" }}
                                     onClick={() => {
-                                        navigate(path)
-                                        handleClose()
+                                        window.location.pathname = path;
                                     }}
                                 >
                                     {newname}
@@ -1684,22 +1173,8 @@ const Docs = (defaultprops) => {
                                 <MenuItem
                                     key={index}
                                     style={{ color: "white" }}
-                                    component={Link}
-                                    to={`#${data.id}`}
-                                    onClick={() => {
-                                        console.log(`Scrolling to: ${data.id}`);
-                                        setTimeout(() => {
-                                            const element = document.getElementById(data?.id);
-                                            if (element) {
-                                                element.scrollIntoView({ behavior: 'smooth' });
-                                            } else {
-                                                console.error(`Element with id ${data.id} not found.`);
-                                            }
-                                        }, 100); // Delay to ensure the content is loaded
-                                        handleCloseToc();
-                                    }}
                                 >
-                                    {data.title}
+                                    <a href={`#${data.id}`} style={hrefStyle}>{data.title}</a>
                                 </MenuItem>
                             )
                         })}
@@ -1736,63 +1211,20 @@ const Docs = (defaultprops) => {
                     color="primary"
                     onClick={handleClick}
                 >
-                    <div style={{ color: "white" }}>More {isArticlePage ? "articles" : "docs"}</div>
+                    <div style={{ color: "white" }}>More docs</div>
                 </Button>
             </div>
         );
 
     // Padding and zIndex etc set because of footer in cloud.
-const loadedCheck = (
-    <DocsWrapper isLoggedIn={isLoggedIn} isLoaded={isLoaded} userdata={userdata}>
-        <DocsContent postDataBrowser={postDataBrowser} postDataMobile={postDataMobile}/>
-    </DocsWrapper>
-);
-
-return <div>{loadedCheck}</div>;
-
-};
-
-export default Docs;
-
-const DocsContent = memo(({postDataBrowser, postDataMobile}) => {
-    const { themeMode } = useContext(Context);
-    const theme = getTheme(themeMode);
-    return(
-        <div style={{fontFamily: theme?.palette?.fontFamily}}>
+    const loadedCheck = (
+        <div style={{ minHeight: 1000, zIndex: 50000, maxWidth: 1920, minWidth: isMobile ? null : 1366, margin: "auto", }}>
             <BrowserView>{postDataBrowser}</BrowserView>
             <MobileView>{postDataMobile}</MobileView>
         </div>
-)})
+    );
 
-const DocsWrapper = memo(({isLoggedIn, isLoaded, children, userdata })=>{
-    
-    const { leftSideBarOpenByClick, windowWidth } = useContext(Context);
+    return <div style={{}}>{loadedCheck}</div>;
+};
 
-    useEffect(() => {
-        if (isLoaded && isLoggedIn && userdata?.org_status?.includes("integration_partner") && userdata?.active_org?.branding.documentation_link?.length > 0) {
-            window.location.href = userdata?.active_org?.branding.documentation_link;
-        }
-    }, [isLoaded, isLoggedIn, userdata]);
-
-    if (isLoaded && isLoggedIn && userdata?.org_status?.includes("integration_partner") && userdata?.active_org?.branding.documentation_link?.length > 0) {
-        return <CircularProgress style={{position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)"}} />;
-    }
-
-    
-
-    return (
-        <div style={{
-            marginTop: window.location.pathname.includes("/articles/") ? 50 : undefined, 
-            paddingBottom: 50,
-            minHeight: 1000, zIndex: 1, 
-            maxWidth: Math.min(!(isLoggedIn && isLoaded) ? 1920 : leftSideBarOpenByClick ? windowWidth - 300 : windowWidth - 200, 1920), 
-            minWidth: isMobile ? null : (isLoggedIn && isLoaded) ? leftSideBarOpenByClick ? 800 : 900 : null, margin: "auto", 
-            position: (isLoggedIn && isLoaded) && leftSideBarOpenByClick ? "relative" : "static", 
-            left: (isLoggedIn && isLoaded) && leftSideBarOpenByClick ? 120 : (isLoggedIn && isLoaded) && !leftSideBarOpenByClick ? 80 : 0, 
-            marginLeft: windowWidth < 1920 ? leftSideBarOpenByClick && (isLoggedIn && isLoaded) ? window.location.pathname.includes("/articles/") ? 0 : 90 : (isLoggedIn && isLoaded) && !leftSideBarOpenByClick ? 80 : 0 : "auto", width: "100%", 
-            transition: "left 0.3s ease-in-out, min-width 0.3s ease-in-out, max-width 0.3s ease-in-out, position 0.3s ease-in-out, margin 0.3s ease-in-out, margin-left 0.3s ease"
-            }}>
-            {children}
-        </div>
-    )
-})
+export default Docs;

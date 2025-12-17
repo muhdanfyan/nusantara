@@ -1,73 +1,51 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect } from "react";
 
 import { Link, Route, Routes, BrowserRouter, useNavigate } from "react-router-dom";
 import { CookiesProvider } from "react-cookie";
 import { removeCookies, useCookies } from "react-cookie";
 
-import Workflows from "./views/Workflows.jsx";
-import GettingStarted from "./views/GettingStarted.jsx";
+import Workflows from "./views/Workflows";
+import GettingStarted from "./views/GettingStarted";
 import AngularWorkflow from "./views/AngularWorkflow.jsx";
 
 import Header from "./components/NewHeader.jsx";
 import HealthPage from "./components/HealthPage.jsx";
 
 //import Header from "./components/Header.jsx";
-import theme, { getTheme } from "./theme.jsx";
-import Apps from "./views/Apps.jsx";
-import Apps2 from "./views/Apps2.jsx";
-import AppCreator from "./views/AppCreator.jsx";
-import DetectionDashBoard from "./views/DetectionDashboard.jsx";
-
-// LLM related tests
-import ChatBot from "./components/ChatBot.jsx";
-import AgentUI from "./views/AgentUI.jsx";
+import theme from "./theme";
+import Apps from "./views/Apps";
+import AppCreator from "./views/AppCreator";
 
 import Welcome from "./views/Welcome.jsx";
 import Dashboard from "./views/Dashboard.jsx";
 import DashboardView from "./views/DashboardViews.jsx";
-import NewDashboard from "./views/NewDashboard.jsx";
-import AdminSetup from "./views/AdminSetup.jsx";
-import Admin from "./views/Admin.jsx";
+import AdminSetup from "./views/AdminSetup";
+import Admin from "./views/Admin";
 import Docs from "./views/Docs.jsx";
-import Usecases2 from "./views/Usecases2.jsx";
-import DashboardViews from "./views/DashboardViews.jsx";
 //import Introduction from "./views/Introduction";
-import SetAuthentication from "./views/SetAuthentication.jsx";
-import SetAuthenticationSSO from "./views/SetAuthenticationSSO.jsx";
+import SetAuthentication from "./views/SetAuthentication";
+import SetAuthenticationSSO from "./views/SetAuthenticationSSO";
 import Search from "./views/Search.jsx";
 import RunWorkflow from "./views/RunWorkflow.jsx";
-import Admin2 from "./views/Admin2.jsx";
 
-import LoginPage from "./views/LoginPage.jsx";
-import LoginPageOld from "./views/LoginPageOld.jsx";
-
-import SettingsPage from "./views/SettingsPage.jsx";
+import LoginPage from "./views/LoginPage";
+import SettingsPage from "./views/SettingsPage";
 import KeepAlive from "./views/KeepAlive.jsx";
+
 import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from '@mui/material/CssBaseline';
 
 import UpdateAuthentication from "./views/UpdateAuthentication.jsx";
 import FrameworkWrapper from "./views/FrameworkWrapper.jsx";
-import ScrollToTop from "./components/ScrollToTop.jsx";
-import AlertTemplate from "./components/AlertTemplate.js";
+import ScrollToTop from "./components/ScrollToTop";
+import AlertTemplate from "./components/AlertTemplate";
 import { isMobile } from "react-device-detect";
 import RuntimeDebugger from "./components/RuntimeDebugger.jsx"
-
-import MFASetUp from './components/MFASetUP.jsx';
-import ApiExplorerWrapper from './views/ApiExplorerWrapper.jsx';
-import LeftSideBar from './components/LeftSideBar.jsx';
-import CodeWorkflow from './views/CodeWorkflow.jsx';
-import NotFound from './views/404.jsx';
 
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 import Drift from "react-driftjs";
-
-import { Context } from './context/ContextApi.jsx';
-import Navbar from "./components/Navbar.jsx";
-import Workflows2 from "./views/Workflows2.jsx";
-import AppExplorer from "./views/AppExplorer.jsx";
 
 // Production - backend proxy forwarding in nginx
 var globalUrl = window.location.origin;
@@ -93,10 +71,7 @@ const App = (message, props) => {
   const [dataset, setDataset] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
   const [curpath, setCurpath] = useState(typeof window === "undefined" || window.location === undefined ? "" : window.location.pathname)
-  const { themeMode, handleThemeChange, setBrandColor, brandColor,setThemeMode, setSupportEmail, setLogoutUrl, setBrandName} = useContext(Context);
-  const currentTheme = getTheme(themeMode, brandColor);
-  const mainColor = currentTheme?.palette?.backgroundColor
-  const [isPreviousThemeLight, setIsPreviousThemeLight] = useState(false)
+
 
   useEffect(() => {
     if (dataset === false) {
@@ -105,29 +80,6 @@ const App = (message, props) => {
       setDataset(true);
     }
   }, []);
-
-  useEffect(() => {
-		const isDarkPath = curpath === "/" || curpath === "/pricing" || curpath === "/partners" || curpath === "/faq" || curpath === "/professional-services" || curpath === "/contact" || curpath === "/training";
-		if (curpath && isDarkPath) {
-			if (themeMode === "light") {
-				setIsPreviousThemeLight(true)
-			}
-			handleThemeChange("dark")
-		}else if ( !isDarkPath && isPreviousThemeLight && userdata?.active_org?.branding?.theme === "light") {
-			handleThemeChange("light")
-			setIsPreviousThemeLight(false)
-		}
-
-		if (isDarkPath && userdata && userdata?.active_org?.branding?.brand_color !== "#ff8544") {
-			setBrandColor("#ff8544")
-		}else if(!isDarkPath && userdata && userdata?.active_org?.branding?.brand_color !== "#ff8544" && userdata?.active_org?.branding?.brand_color?.length > 0) {
-			const brandColor = localStorage.getItem("brandColor")
-			if (brandColor !== null && brandColor !== undefined && brandColor.length > 0) {
-				setBrandColor(brandColor)
-			}
-		}
-
-	}, [themeMode, curpath, userdata])
 
   if (
     isLoaded &&
@@ -168,47 +120,6 @@ const App = (message, props) => {
       });
   };
 
-  useEffect(() => {
-		if (userdata && 
-			userdata?.org_status?.includes("integration_partner") && 
-			userdata?.active_org?.image) { 
-
-			const existingLinks = document.querySelectorAll("link[rel*='icon']");
-			existingLinks.forEach(link => link.parentNode.removeChild(link));
-			const newLink = document.createElement('link');
-			newLink.rel = 'icon';
-			newLink.type = 'image/x-icon'; 
-			try {
-			if (typeof userdata.active_org.image === 'string') {
-				if (userdata.active_org.image.startsWith('data:')) {
-				newLink.href = userdata.active_org.image;
-				} else if (userdata.active_org.image.startsWith('/')) {
-				newLink.href = userdata.active_org.image;
-				} else {
-					let mimeType = 'image/png';
-					newLink.href = `data:${mimeType};base64,${userdata.active_org.image}`;
-				}
-			} else {
-				console.error("Image data is not in expected format:", userdata.active_org.image);
-				return;
-			}
-			
-			// Add the new favicon link to head
-			document.head.appendChild(newLink);
-			const iframe = document.createElement('iframe');
-			iframe.style.display = 'none';
-			document.body.appendChild(iframe);
-			iframe.contentDocument.write('<link rel="icon" href="' + newLink.href + '">');
-			setTimeout(() => {
-				document.body.removeChild(iframe);
-			}, 100);
-			
-			} catch (error) {
-			console.error("Error updating favicon:", error);
-			}
-		}
-		}, [userdata]);
-
   const checkLogin = () => {
     var baseurl = globalUrl;
     fetch(`${globalUrl}/api/v1/getinfo`, {
@@ -222,13 +133,6 @@ const App = (message, props) => {
         var userInfo = {};
         if (responseJson.success === true) {
           //console.log("USER: ", responseJson);
-		  if (responseJson?.switch_parent === true) {
-			toast.info(responseJson.reason)
-			setTimeout(() => {
-				window.location.reload();
-			}, 3000);
-			return
-		  }
 
           userInfo = responseJson;
           setIsLoggedIn(true);
@@ -241,49 +145,7 @@ const App = (message, props) => {
               { path: "/" }
             );
           }
-		  if (responseJson?.org_status?.includes("integration_partner")) {
-			if (responseJson?.active_org?.branding?.enable_chat !== true) {
-
-				// Find the drift chatbox and remove it
-			}
-
-				if (responseJson?.active_org?.branding?.theme?.length > 0 ) {
-					handleThemeChange(responseJson?.active_org?.branding?.theme)
-				}
-
-				if (responseJson?.active_org?.branding?.brand_color?.length > 0 ) {
-					setBrandColor(responseJson?.active_org?.branding?.brand_color)
-					localStorage.setItem("brandColor", responseJson?.active_org?.branding?.brand_color)
-				}
-
-				if (responseJson?.active_org?.branding?.brand_name?.length > 0 ) {
-					setBrandName(responseJson?.active_org?.branding?.brand_name)
-					localStorage.setItem("brandName", responseJson?.active_org?.branding?.brand_name)
-				}
-
-				if (responseJson?.active_org?.branding?.support_email?.length > 0 ) {
-					setSupportEmail(responseJson?.active_org?.branding?.support_email)
-				}
-					
-				if (responseJson?.active_org?.branding?.logout_url?.length > 0 ) {
-					setLogoutUrl(responseJson?.active_org?.branding?.logout_url)
-				}
-			} else {
-				localStorage.removeItem("brandColor")
-				setBrandColor("#ff8544")
-				setBrandName("Shuffle")	
-				localStorage.removeItem("brandName")
-				if(responseJson?.theme?.length > 0){
-					handleThemeChange(responseJson?.theme)
-				}else{
-					handleThemeChange("dark")
-				}
-			}
-        }else {
-			handleThemeChange("dark")
-			setThemeMode("dark")
-			localStorage.removeItem("theme");
-		}
+        }
 
         // Handling Ethereum update
 
@@ -306,11 +168,10 @@ const App = (message, props) => {
   const includedData =
       <div
         style={{
-          backgroundColor: mainColor,
+          backgroundColor: theme.palette.backgroundColor,
           color: "rgba(255, 255, 255, 0.65)",
           minHeight: "100vh",
         }}
-		className='parent-component'
       >
         <ScrollToTop
           getUserNotifications={getUserNotifications}
@@ -333,47 +194,33 @@ const App = (message, props) => {
 				/>
 		}
 
-		
-					{ window?.location?.pathname === "/"  || window?.location?.pathname === "/training" || !(isLoggedIn && isLoaded) ? (
-						<div style={{ minHeight: 68, maxHeight: 68 }}>
-						{/* <Header
-						notifications={notifications}
-						setNotifications={setNotifications}
-						userdata={userdata}
-						cookies={cookies}
-						removeCookie={removeCookie}
-						isLoaded={isLoaded}
-						globalUrl={globalUrl}
-						setIsLoggedIn={setIsLoggedIn}
-						isLoggedIn={isLoggedIn}
-						curpath={curpath}
-						{...props}
-						/> */}
-						<Navbar
-						notifications={notifications}
-						setNotifications={setNotifications}
-						userdata={userdata}
-						cookies={cookies}
-						removeCookie={removeCookie}
-						isLoaded={isLoaded}
-						globalUrl={globalUrl}
-						setIsLoggedIn={setIsLoggedIn}
-						isLoggedIn={isLoggedIn}
-						curpath={curpath}
-						{...props}
-						/>
-					</div>
-					) : (
-						<div style={{ position: 'fixed', top: 32, left: 10, zIndex: 100000 }}>
-						  <LeftSideBar checkLogin={checkLogin} userdata={userdata} globalUrl={globalUrl} notifications={notifications} />
-						</div>
-					) }
+		<div style={{ minHeight: 68, maxHeight: 68, }}>
+			<Header
+				billingInfo={{}}
+
+				notifications={notifications}
+				setNotifications={setNotifications}
+				checkLogin={checkLogin}
+				cookies={cookies}
+				removeCookie={removeCookie}
+				isLoaded={isLoaded}
+				globalUrl={globalUrl}
+				setIsLoggedIn={setIsLoggedIn}
+				isLoggedIn={isLoggedIn}
+				userdata={userdata}
+
+				curpath={curpath}
+				serverside={false}
+				isMobile={false}
+
+				{...props}
+			/>
+		</div>
 		
 				{/*
         <div style={{ height: 60 }} />
 				*/}
 				<Routes>
-
         	<Route
         	  exact
         	  path="/login"
@@ -381,8 +228,7 @@ const App = (message, props) => {
         	    <LoginPage
         	      isLoggedIn={isLoggedIn}
         	      setIsLoggedIn={setIsLoggedIn}
-        	      register={false}
-        	      inregister={false}
+        	      register={true}
         	      isLoaded={isLoaded}
         	      globalUrl={globalUrl}
         	      setCookie={setCookie}
@@ -392,66 +238,9 @@ const App = (message, props) => {
         	    />
         	  }
         	/>
-
         	<Route
         	  exact
-        	  path="/login2"
-        	  element={
-        	    <LoginPageOld
-        	      isLoggedIn={isLoggedIn}
-        	      setIsLoggedIn={setIsLoggedIn}
-        	      register={false}
-        	      inregister={false}
-        	      isLoaded={isLoaded}
-        	      globalUrl={globalUrl}
-        	      setCookie={setCookie}
-        	      cookies={cookies}
-        	      checkLogin={checkLogin}
-        	      {...props}
-        	    />
-        	  }
-        	/>
-
-        	<Route
-        	  exact
-        	  path="/loginsetup"
-        	  element={
-        	    <LoginPageOld
-        	      isLoggedIn={isLoggedIn}
-        	      setIsLoggedIn={setIsLoggedIn}
-        	      register={false}
-        	      inregister={false}
-        	      isLoaded={isLoaded}
-        	      globalUrl={globalUrl}
-        	      setCookie={setCookie}
-        	      cookies={cookies}
-        	      checkLogin={checkLogin}
-        	      {...props}
-        	    />
-        	  }
-        	/>
-
-        	<Route
-        	  exact
-        	  path="/register"
-        	  element={
-        	    <LoginPage
-        	      isLoggedIn={isLoggedIn}
-        	      setIsLoggedIn={setIsLoggedIn}
-        	      inregister={true}
-        	      isLoaded={isLoaded}
-        	      globalUrl={globalUrl}
-        	      setCookie={setCookie}
-        	      cookies={cookies}
-        	      checkLogin={checkLogin}
-        	      {...props}
-        	    />
-        	  }
-        	/>
-
-        	<Route
-        	  exact
-        	  path="/admin2"
+        	  path="/admin"
         	  element={
         	    <Admin
         	      userdata={userdata}
@@ -468,32 +257,13 @@ const App = (message, props) => {
         	    />
         	  }
         	/>
-			<Route
-					exact
-					path="/admin"
-					element={
-						<Admin2
-							cookies={cookies}
-							removeCookie={removeCookie}
-							isLoaded={isLoaded}
-							isLoggedIn={isLoggedIn}
-							notifications={notifications}
-							setNotifications={setNotifications}
-							globalUrl={globalUrl}
-							checkLogin={checkLogin}
-							userdata={userdata}
-							{...props}
-						/>
-					}
-				/>
-					<Route exact path="/search" element={<Search serverside={false} isLoaded={isLoaded} userdata={userdata} globalUrl={globalUrl} surfaceColor={currentTheme.palette.surfaceColor} inputColor={currentTheme.palette.inputColor} {...props} /> } />
+					<Route exact path="/search" element={<Search serverside={false} isLoaded={isLoaded} userdata={userdata} globalUrl={globalUrl} surfaceColor={theme.palette.surfaceColor} inputColor={theme.palette.inputColor} {...props} /> } />
         	<Route
         	  exact
         	  path="/admin/:key"
         	  element={
         	    <Admin
         	      isLoggedIn={isLoggedIn}
-				  userdata={userdata}
         	      setIsLoggedIn={setIsLoggedIn}
         	      register={true}
         	      isLoaded={isLoaded}
@@ -551,10 +321,9 @@ const App = (message, props) => {
         	    }
         	  />
         	) : null}
-
         	<Route
         	  exact
-        	  path="/adminsetup"
+        	  path="/AdminSetup"
         	  element={
         	    <AdminSetup
         	      isLoaded={isLoaded}
@@ -564,7 +333,6 @@ const App = (message, props) => {
         	    />
         	  }
         	/>
-
         	<Route
         	  exact
         	  path="/detectionframework"
@@ -597,22 +365,9 @@ const App = (message, props) => {
         	/>
         	<Route
         	  exact
-        	  path="/usecases2"
-        	  element={
-        	    <Dashboard
-				  userdata={userdata}
-        	      isLoaded={isLoaded}
-        	      isLoggedIn={isLoggedIn}
-        	      globalUrl={globalUrl}
-        	      {...props}
-        	    />
-        	  }
-        	/>
-			<Route
-        	  exact
         	  path="/usecases"
         	  element={
-        	    <Usecases2
+        	    <Dashboard
 				  userdata={userdata}
         	      isLoaded={isLoaded}
         	      isLoggedIn={isLoggedIn}
@@ -636,7 +391,7 @@ const App = (message, props) => {
 			<Route exact path="/apps/authentication" element={<UpdateAuthentication serverside={false} userdata={userdata} isLoggedIn={isLoggedIn} setIsLoggedIn={setIsLoggedIn} register={true} isLoaded={isLoaded} globalUrl={globalUrl} setCookie={setCookie} cookies={cookies} {...props} />} />
         	<Route
         	  exact
-        	  path="/apps2"
+        	  path="/apps"
         	  element={
 				<Apps
 					isLoaded={isLoaded}
@@ -644,23 +399,6 @@ const App = (message, props) => {
 					globalUrl={globalUrl}
 					userdata={userdata}
 					{...props}
-				/>
-        	  }
-        	/>
-			<Route
-        	  exact
-        	  path="/apps"
-        	  element={
-				<Apps2
-					serverside={false} 
-					isLoaded={isLoaded} 
-					isLoggedIn={isLoggedIn}
-					checkLogin={checkLogin}
-					userdata={userdata} 
-					globalUrl={globalUrl} 
-					surfaceColor={currentTheme.palette.surfaceColor} 
-					inputColor={currentTheme.palette.inputColor} 
-					{...props} 
 				/>
         	  }
         	/>
@@ -676,35 +414,11 @@ const App = (message, props) => {
         	    />
         	  }
         	/>
-			<Route exact path="/apps/:appid" element={<AppExplorer userdata={userdata} isLoggedIn={isLoggedIn} isLoaded={isLoaded}  globalUrl={globalUrl} surfaceColor={currentTheme.palette.surfaceColor} inputColor={currentTheme.palette.inputColor} checkLogin={checkLogin} {...props} />} />
-			<Route exact path="/apis/:appid" element={<ApiExplorerWrapper serverside={false} userdata={userdata} isLoggedIn={isLoggedIn} isMobile={false} selectedApp={undefined} isLoaded={isLoaded}globalUrl={globalUrl} surfaceColor={currentTheme.palette.surfaceColor} inputColor={currentTheme.palette.inputColor} checkLogin={checkLogin} {...props} />} />
-			<Route
-				exact
-				path="/detections/sigma"
-				element={<DetectionDashBoard globalUrl={globalUrl} />}
-			/>
         	<Route
-        	  exact
-        	  path="/workflows2"
-        	  element={
-        	    <Workflows
-				  checkLogin={checkLogin}
-        	      cookies={cookies}
-        	      removeCookie={removeCookie}
-        	      isLoaded={isLoaded}
-        	      isLoggedIn={isLoggedIn}
-        	      globalUrl={globalUrl}
-        	      cookies={cookies}
-        	      userdata={userdata}
-        	      {...props}
-        	    />
-        	  }
-        	/>
-			<Route
         	  exact
         	  path="/workflows"
         	  element={
-        	    <Workflows2
+        	    <Workflows
 				  checkLogin={checkLogin}
         	      cookies={cookies}
         	      removeCookie={removeCookie}
@@ -749,40 +463,8 @@ const App = (message, props) => {
         	    />
         	  }
         	/>
-			<Route exact path="/workflows/:key/code" element={<CodeWorkflow serverside={false} userdata={userdata} globalUrl={globalUrl} isLoaded={isLoaded} isLoggedIn={isLoggedIn} surfaceColor={currentTheme.palette.surfaceColor} inputColor={currentTheme.palette.inputColor}{...props} />} />
-			<Route exact path="/workflows/:key/run" element={<RunWorkflow  userdata={userdata} globalUrl={globalUrl} isLoaded={isLoaded} isLoggedIn={isLoggedIn} surfaceColor={currentTheme.palette.surfaceColor} inputColor={currentTheme.palette.inputColor}{...props} /> } />
-			<Route exact path="/workflows/:key/execute" element={<RunWorkflow  userdata={userdata} globalUrl={globalUrl} isLoaded={isLoaded} isLoggedIn={isLoggedIn} surfaceColor={currentTheme.palette.surfaceColor} inputColor={currentTheme.palette.inputColor}{...props} /> } />
-
-			<Route exact path="/forms" element={<RunWorkflow serverside={false} userdata={userdata} globalUrl={globalUrl} isLoaded={isLoaded} isLoggedIn={isLoggedIn} surfaceColor={currentTheme.palette.surfaceColor} inputColor={currentTheme.palette.inputColor}{...props} />} />
-			<Route exact path="/forms/:key/run" element={<RunWorkflow serverside={false} userdata={userdata} globalUrl={globalUrl} isLoaded={isLoaded} isLoggedIn={isLoggedIn} surfaceColor={currentTheme.palette.surfaceColor} inputColor={currentTheme.palette.inputColor}{...props} />} />
-			<Route exact path="/forms/:key" element={<RunWorkflow serverside={false} userdata={userdata} globalUrl={globalUrl} isLoaded={isLoaded} isLoggedIn={isLoggedIn} surfaceColor={currentTheme.palette.surfaceColor} inputColor={currentTheme.palette.inputColor}{...props} />} />
-
-        	<Route
-        	  exact
-        	  path="/legal/:key"
-        	  element={
-        	    <Docs
-        	      isMobile={isMobile}
-        	      isLoaded={isLoaded}
-        	      globalUrl={globalUrl}
-				  isLoggedIn={isLoggedIn}
-        	      {...props}
-        	    />
-        	  }
-        	/>
-        	<Route
-        	  exact
-        	  path="/legal"
-        	  element={
-        	    <Docs
-        	      isMobile={isMobile}
-        	      isLoaded={isLoaded}
-        	      globalUrl={globalUrl}
-				  isLoggedIn={isLoggedIn}
-        	      {...props}
-        	    />
-        	  }
-        	/>
+			<Route exact path="/workflows/:key/run" element={<RunWorkflow  userdata={userdata} globalUrl={globalUrl} isLoaded={isLoaded} isLoggedIn={isLoggedIn} surfaceColor={theme.palette.surfaceColor} inputColor={theme.palette.inputColor}{...props} /> } />
+			<Route exact path="/workflows/:key/execute" element={<RunWorkflow  userdata={userdata} globalUrl={globalUrl} isLoaded={isLoaded} isLoggedIn={isLoggedIn} surfaceColor={theme.palette.surfaceColor} inputColor={theme.palette.inputColor}{...props} /> } />
         	<Route
         	  exact
         	  path="/docs/:key"
@@ -791,7 +473,6 @@ const App = (message, props) => {
         	      isMobile={isMobile}
         	      isLoaded={isLoaded}
         	      globalUrl={globalUrl}
-				  isLoggedIn={isLoggedIn}
         	      {...props}
         	    />
         	  }
@@ -800,11 +481,11 @@ const App = (message, props) => {
         	  exact
         	  path="/docs"
         	  element={
+							//navigate(`/docs/about`)
         	    <Docs
         	      isMobile={isMobile}
         	      isLoaded={isLoaded}
         	      globalUrl={globalUrl}
-				  isLoggedIn={isLoggedIn}
         	      {...props}
         	    />
         	  }
@@ -839,7 +520,6 @@ const App = (message, props) => {
         	    />
         	  }
         	/>
-			<Route exact path="/login/:key/mfa-setup" element={<MFASetUp setCookie={setCookie} serverside={false} mainColor={currentTheme.palette.backgroundColor} userdata={userdata} stripeKey={undefined} globalUrl={globalUrl} inputColor={currentTheme.palette.inputColor} isLoaded={isLoaded} {...props} />} />
         	<Route
         	  exact
         	  path="/login_sso"
@@ -873,107 +553,18 @@ const App = (message, props) => {
         	    />
         	  }
         	/>
-
-			<Route
-				exact
-				path="/new-dashboard"
-				element={
-					<NewDashboard
-						serverside={false}
-						isLoaded={isLoaded}
-						isLoggedIn={isLoggedIn}
-						globalUrl={globalUrl}
-						userdata={userdata}
-					/>
-				}
-			/>
-
-			<Route
-				exact
-				path="/dashboard"
-				element={
-					<DashboardViews
-						serverside={false}
-						isLoaded={isLoaded}
-						isLoggedIn={isLoggedIn}
-						globalUrl={globalUrl}
-						wut={userdata}
-					/>
-				}
-			/>
-			<Route
-				exact
-				path="/dashboards"
-				element={
-					<DashboardViews
-						serverside={false}
-						isLoaded={isLoaded}
-						isLoggedIn={isLoggedIn}
-						globalUrl={globalUrl}
-						wut={userdata}
-					/>
-				}
-			/>
-			<Route
-				exact
-				path="/dashboard/:key"
-				element={
-					<DashboardViews
-						serverside={false}
-						isLoaded={isLoaded}
-						isLoggedIn={isLoggedIn}
-						globalUrl={globalUrl}
-						wut={userdata}
-					/>
-				}
-			/>
-			<Route
-				exact
-				path="/chat"
-				element={
-					<ChatBot
-						serverside={false}
-						cookies={cookies}
-						removeCookie={removeCookie}
-						isLoaded={isLoaded}
-						isLoggedIn={isLoggedIn}
-						globalUrl={globalUrl}
-						cookies={cookies}
-						userdata={userdata}
-						{...props}
-					/>
-				}
-			/>
-			<Route
-				exact
-				path="/conversation"
-				element={
-					<ChatBot
-						serverside={false}
-						cookies={cookies}
-						removeCookie={removeCookie}
-						isLoaded={isLoaded}
-						isLoggedIn={isLoggedIn}
-						globalUrl={globalUrl}
-						cookies={cookies}
-						userdata={userdata}
-						{...props}
-					/>
-				}
-			/>
-			<Route
-				exact
-				path="/dashboards/:key"
-				element={
-					<DashboardViews
-						serverside={false}
-						isLoaded={isLoaded}
-						isLoggedIn={isLoggedIn}
-						globalUrl={globalUrl}
-						wut={userdata}
-					/>
-				}
-			/>
+        	<Route
+        	  exact
+        	  path="/dashboards"
+        	  element={
+        	    <DashboardView
+        	      isLoaded={isLoaded}
+        	      isLoggedIn={isLoggedIn}
+        	      globalUrl={globalUrl}
+        	      {...props}
+        	    />
+        	  }
+        	/>
 			<Route
 				exact
 				path="/welcome"
@@ -991,22 +582,6 @@ const App = (message, props) => {
 					/>
 				}
 			/>
-
-			<Route
-				exact
-				path="/agents"
-				element={
-					<AgentUI
-						serverside={false}
-						isLoaded={isLoaded}
-						isLoggedIn={isLoggedIn}
-						globalUrl={globalUrl}
-						userdata={userdata}
-						{...props}
-					/>
-				}
-				/>
-
         	<Route
         	  exact
         	  path="/"
@@ -1023,38 +598,30 @@ const App = (message, props) => {
         	    />
         	  }
         	/>
-
-			<Route
-				exact
-				path="/*"
-				element={
-					<NotFound />
-				}
-			/>
-		</Routes>
+				</Routes>
       </div>
 
   return (
-		<ThemeProvider theme={currentTheme} defaultMode="dark">
-		  <CssBaseline />
-		  <CookiesProvider>
-			<BrowserRouter>
-			  {includedData}
-			</BrowserRouter>
-			<ToastContainer 
-				position="bottom-center"
-				autoClose={5000}
-				hideProgressBar={false}
-				newestOnTop={false}
-				closeOnClick
-				rtl={false}
-				pauseOnFocusLoss
-				draggable
-				pauseOnHover
-				theme={themeMode}
-			/>
-		  </CookiesProvider>
-		</ThemeProvider>
+    <ThemeProvider theme={theme}>
+	  <CssBaseline />
+      <CookiesProvider>
+        <BrowserRouter>
+		  {includedData}
+        </BrowserRouter>
+		<ToastContainer 
+			position="bottom-center"
+			autoClose={5000}
+			hideProgressBar={false}
+			newestOnTop={false}
+			closeOnClick
+			rtl={false}
+			pauseOnFocusLoss
+			draggable
+			pauseOnHover
+			theme="dark"
+		/>
+      </CookiesProvider>
+    </ThemeProvider>
   );
 };
 

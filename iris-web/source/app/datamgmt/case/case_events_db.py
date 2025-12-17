@@ -20,18 +20,19 @@ from sqlalchemy import and_
 
 from app import db
 from app.datamgmt.states import update_timeline_state
-from app.models.models import AssetsType
-from app.models.models import CaseAssets
-from app.models.models import CaseEventCategory
-from app.models.models import CaseEventsAssets
-from app.models.models import CaseEventsIoc
-from app.models.cases import CasesEvent
-from app.models.models import Comments
-from app.models.models import EventCategory
-from app.models.models import EventComments
-from app.models.models import Ioc
-from app.models.models import IocAssetLink
-from app.models.models import IocType
+from app.models import AssetsType
+from app.models import CaseAssets
+from app.models import CaseEventCategory
+from app.models import CaseEventsAssets
+from app.models import CaseEventsIoc
+from app.models import CasesEvent
+from app.models import Comments
+from app.models import EventCategory
+from app.models import EventComments
+from app.models import Ioc
+from app.models import IocAssetLink
+from app.models import IocLink
+from app.models import IocType
 from app.models.authorization import User
 
 
@@ -285,9 +286,11 @@ def update_event_iocs(event_id, caseid, iocs_list):
         CaseEventsIoc.case_id == caseid
     ).delete()
 
-    valid_iocs = Ioc.query.filter(
-        Ioc.ioc_id.in_(iocs_list),
-        Ioc.case_id == caseid
+    valid_iocs = IocLink.query.with_entities(
+        IocLink.ioc_id
+    ).filter(
+        IocLink.ioc_id.in_(iocs_list),
+        IocLink.case_id == caseid
     ).all()
 
     for ioc in valid_iocs:
@@ -338,7 +341,9 @@ def get_case_iocs_for_tm(caseid):
         Ioc.ioc_value,
         Ioc.ioc_id
     ).filter(
-        Ioc.case_id == caseid
+        IocLink.case_id == caseid
+    ).join(
+        IocLink.ioc
     ).order_by(
         Ioc.ioc_value
     ).all()

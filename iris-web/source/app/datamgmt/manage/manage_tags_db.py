@@ -1,10 +1,9 @@
 from functools import reduce
 
-from sqlalchemy import and_
+from sqlalchemy import and_, desc, asc
 
 import app
-from app.models.models import Tags
-from app.datamgmt.conversions import convert_sort_direction
+from app.models import Tags
 
 
 def get_filtered_tags(tag_title=None,
@@ -38,7 +37,7 @@ def get_filtered_tags(tag_title=None,
     data = Tags.query.filter(*conditions)
 
     if sort_by is not None:
-        order_func = convert_sort_direction(sort_dir)
+        order_func = desc if sort_dir == 'desc' else asc
 
         if sort_by == 'name':
             data = data.order_by(order_func(Tags.tag_title))

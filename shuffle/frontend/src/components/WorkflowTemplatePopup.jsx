@@ -47,7 +47,7 @@ const WorkflowTemplatePopup = (props) => {
 
 	const [requestSent, setRequestSent] = React.useState(false)
   	
-	const isCloud = (window.location.host === "localhost:3002" || window.location.host === "shuffler.io") ? true : (process.env.IS_SSR === "true");
+	const isCloud = window.location.host === "localhost:3002" || window.location.host === "shuffler.io";
 	let navigate = useNavigate();
 	useEffect(() => {
 		if (modalOpen !== true) {
@@ -585,7 +585,7 @@ const WorkflowTemplatePopup = (props) => {
 					{/*errorMessage === "" && configurationFinished === true && workflow.id !== undefined && workflowLoading === false ?
 						<Tooltip title="Click to explore the workflow" placement="top">
 							<span 
-								style={{position: "fixed", display: "flex", right: "10%", top: "20%", border: "1px solid rgba(255,255,255,0.3)", borderRadius: theme.palette?.borderRadius, padding: "15px 30px 15px 30px", backgroundColor: theme.palette.platformColor, cursor: "pointer", }}
+								style={{position: "fixed", display: "flex", right: "10%", top: "20%", border: "1px solid rgba(255,255,255,0.3)", borderRadius: theme.palette.borderRadius, padding: "15px 30px 15px 30px", backgroundColor: theme.palette.platformColor, cursor: "pointer", }}
 								onClick={() => {
 									// Open in new tab
 									window.open("/workflows/" + workflow.id, "_blank")
@@ -678,7 +678,7 @@ const WorkflowTemplatePopup = (props) => {
 						}
 						{img2 !== undefined && img2 !== "" && dstapp !== undefined && dstapp !== "" ?
 							<Tooltip title={dstapp.replaceAll(":default", "").replaceAll("_", " ").replaceAll(" API", "")} placement="top">
-								<div style={{display : dstapp === "NA" ? "none" : "flex" }}>
+								<div style={{display: "flex", }}>
 									<TrendingFlatIcon style={{ marginTop: 7, }} />
 									<div style={dstapp !== undefined && dstapp.includes(":default") ? imagestyleWrapperDefault : imagestyleWrapper}>
 										<img src={img2} style={dstapp !== undefined && dstapp.includes(":default") ? imagestyleDefault : imagestyle} />

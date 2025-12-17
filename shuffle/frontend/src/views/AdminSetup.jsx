@@ -1,8 +1,6 @@
 /* eslint-disable react/no-multi-comp */
 import React, { useState } from "react";
 import { makeStyles } from "@mui/styles";
-import theme from '../theme.jsx';
-import { useNavigate } from "react-router-dom";
 
 import {
   CircularProgress,
@@ -22,8 +20,11 @@ const surfaceColor = "#27292D";
 const inputColor = "#383B40";
 
 const boxStyle = {
-  padding: 40, 
-  backgroundColor: theme.palette.backgroundColor,
+  paddingLeft: "30px",
+  paddingRight: "30px",
+  paddingBottom: "30px",
+  paddingTop: "30px",
+  backgroundColor: surfaceColor,
 };
 
 const useStyles = makeStyles({
@@ -40,10 +41,8 @@ const AdminAccount = (props) => {
   const [firstRequest, setFirstRequest] = useState(true);
   const [loginLoading, setLoginLoading] = useState(false);
 
-
   // Used to swap from login to register. True = login, false = register
   const register = true;
-  let navigate = useNavigate();
 
   const classes = useStyles();
   // Error messages etc
@@ -68,25 +67,16 @@ const AdminAccount = (props) => {
       .then((response) =>
         response.json().then((responseJson) => {
           if (responseJson["success"] === false) {
-            setLoginInfo(responseJson["reason"])
-
-			if (responseJson?.reason?.toLowerCase().includes("connection refused")) { 
-				navigate("/loginsetup")
-			}
-
+            setLoginInfo(responseJson["reason"]);
           } else {
             if (responseJson.reason === "redirect") {
-			  setTimeout(() => {
-              	window.location.pathname = "/login"
-			  }, 2500)
+              window.location.pathname = "/login";
             }
-
           }
         })
       )
       .catch((error) => {
-        setLoginInfo("Error in userdata (1): ", error);
-		navigate("/loginsetup")
+        setLoginInfo("Error in userdata: ", error);
       });
   };
 
@@ -117,18 +107,14 @@ const AdminAccount = (props) => {
           if (responseJson["success"] === false) {
             setLoginInfo(responseJson["reason"]);
           } else {
-            setLoginInfo("Successful register! Redirecting in a moment...");
-
-			setTimeout(() => {
-            	window.location.pathname = "/login";
-			}, 2500)
+            setLoginInfo("Successful register :)");
+            window.location.pathname = "/login";
           }
         })
       )
       .catch((error) => {
-        setLoginInfo("Error in userdata (2): ", error);
-        setLoginLoading(false)
-		navigate("/loginsetup")
+        setLoginLoading(false);
+        setLoginInfo("Error in userdata: ", error);
       });
   };
 

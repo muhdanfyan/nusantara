@@ -1,5 +1,3 @@
-## Lalits frontend magic
-
 ## Localhost Certificate info:
 
 

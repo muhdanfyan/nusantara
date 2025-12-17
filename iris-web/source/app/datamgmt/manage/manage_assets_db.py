@@ -1,13 +1,10 @@
 from flask_login import current_user
-from sqlalchemy import and_
+from sqlalchemy import and_, desc, asc
 from functools import reduce
 
 import app
 from app.datamgmt.manage.manage_cases_db import user_list_cases_view
-from app.datamgmt.conversions import convert_sort_direction
-from app.models.cases import Cases
-from app.models.models import CaseAssets
-from app.models.models import Client
+from app.models import CaseAssets, Client, Cases
 
 
 def get_filtered_assets(case_id=None,
@@ -58,7 +55,7 @@ def get_filtered_assets(case_id=None,
         data = data.join(CaseAssets.case).join(Cases.client)
 
     if sort_by is not None:
-        order_func = convert_sort_direction(sort_dir)
+        order_func = desc if sort_dir == 'desc' else asc
 
         if sort_by == 'name':
             data = data.order_by(order_func(CaseAssets.asset_name))

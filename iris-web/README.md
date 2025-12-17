@@ -1,12 +1,12 @@
 
 <p align="center">
-    <img src="ui/public/assets/img/logo.ico" />
+    <img src="source/app/static/assets/img/logo.ico" />
 </p>
 
 <p align="center">
   Incident Response Investigation System
   <br>
-  <i>Current Version v2.4.20</i>
+  <i>Current Version v2.4.12</i>
   <br>
   <a href="https://v200.beta.dfir-iris.org">Online Demonstration</a>
 </p>
@@ -52,12 +52,13 @@ git clone https://github.com/dfir-iris/iris-web.git
 cd iris-web
 
 # Checkout to the last tagged version 
-git checkout v2.4.20
+git checkout v2.4.12
+
 # Copy the environment file 
 cp .env.model .env
 
-# Pull the dockers
-docker compose pull
+# Build the dockers
+docker compose build
 
 # Run IRIS 
 docker compose up

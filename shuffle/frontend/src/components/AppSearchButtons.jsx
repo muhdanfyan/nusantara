@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef, useContext } from "react";
-import {getTheme} from '../theme.jsx';
+import React, { useState, useEffect, useRef } from "react";
+import theme from '../theme.jsx';
 import ReactGA from 'react-ga4';
 import { useNavigate, Link } from 'react-router-dom';
-import { isMobile } from 'react-device-detect';
+
 import { Search as Searchicon, CloudQueue as CloudQueueicon, Code as Codeicon, Close as Closeicon, Folder as Foldericon, LibraryBooks as LibraryBooksicon, Delete as DeleteIcon, Close as CloseIcon, } from '@mui/icons-material';
 import aa from 'search-insights'
 import Deleteicon from '@mui/icons-material/Delete';
@@ -36,12 +36,9 @@ import {
     IconButton,
 } from '@mui/material';
 
-import { Context } from "../context/ContextApi.jsx";
-
 const AppSearchButtons = (props) => {
     const { userdata, globalUrl, appFramework, moreButton, finishedApps, appType, totalApps, index, onNodeSelect, setDiscoveryData, appName, AppImage, setDefaultSearch, discoveryData, checkLogin, setMissing, getAppFramework, } = props
-    const { themeMode } = useContext(Context);
-    const theme = getTheme(themeMode);
+
     const ref = useRef()
     let navigate = useNavigate();
 
@@ -50,8 +47,6 @@ const AppSearchButtons = (props) => {
     const [newSelectedApp, setNewSelectedApp] = useState(undefined)
 
     useEffect(() => {
-		console.log("UPDATED APP: ", newSelectedApp)
-
         if (newSelectedApp !== undefined && setMissing != undefined) {
             const submitAppFramework = {
                 "description": newSelectedApp.description,
@@ -91,7 +86,7 @@ const AppSearchButtons = (props) => {
 
     const foundApp = findSpecificApp(appFramework, appType)
     if (foundApp === undefined || foundApp === null) {
-        //console.log("AppSearchButtons: App not found in appFramework: " + appType)
+        console.log("AppSearchButtons: App not found in appFramework: " + appType)
         return null
     }
 
@@ -141,14 +136,8 @@ const AppSearchButtons = (props) => {
 
     const icon = foundApp.large_image
 	var foundAppImage = AppImage
-	if (foundApp.name !== undefined && foundApp.name !== null && foundApp.name.length > 0 && !foundApp.name.includes(":default")) {
-
-		if (AppImage === undefined || AppImage === null || AppImage.length < 10) {
-			foundAppImage = foundApp.large_image
-		}
-	} else {
-		const newapp = findSpecificApp(appFramework, appType) 
-    	// const { userdata, globalUrl, appFramework, moreButton, finishedApps, appType, totalApps, index, onNodeSelect, setDiscoveryData, appName, AppImage, setDefaultSearch, discoveryData, checkLogin, setMissing, getAppFramework, } = props
+	if (foundApp.name !== undefined && foundApp.name !== null && !foundApp.name.includes(":default")) {
+		foundAppImage = foundApp.large_image
 	}
 
     let xsValue = 12;
@@ -182,7 +171,7 @@ const AppSearchButtons = (props) => {
       
 
     return (
-        <Grid item xs={xsValue} style={{ alignItems: "center", marginTop: 5, maxWidth: "50%", minWidth: "50%" }}
+        <Grid item xs={xsValue} style={{ alignItems: "center", marginTop: 5, }}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
         >
@@ -192,19 +181,19 @@ const AppSearchButtons = (props) => {
                         width: 319,
                         height: 395,
                         flexShrink: 0,
-                        marginLeft: isMobile? null:70,
+                        marginLeft: 70,
                         marginTop: 68,
                         position: "absolute",
                         zIndex: 100,
                         borderRadius: 6,
                         border: "1px solid var(--Container-Stroke, #494949)",
-                        background: theme.palette.platformColor,
+                        background: "var(--Container, #212121)",
                         boxShadow: "8px 8px 32px 24px rgba(0, 0, 0, 0.16)",
                     }}
                 >
                     <div style={{ display: "flex" }}>
                         <div style={{ display: "flex", textAlign: "center", textTransform: "capitalize" }}>
-                            <Typography color="textPrimary" style={{ padding: 16, textTransform: "capitalize" }}> {discoveryData} </Typography>
+                            <Typography style={{ padding: 16, color: "#FFFFFF", textTransform: "capitalize" }}> {discoveryData} </Typography>
                         </div>
                         <div style={{ display: "flex" }}>
                             <Tooltip
@@ -215,14 +204,9 @@ const AppSearchButtons = (props) => {
                                 <IconButton
                                     style={{
                                         flex: 1,
-										position: "absolute",
-										right: 0, 
-										top: 10, 
-										height: 10, 
-
                                         // width: 224,
-                                        //marginLeft: discoveryData === ("communication") ? 112 : 200,
-                                        //width: "100%",
+                                        marginLeft: discoveryData === ("communication") ? 112 : 200,
+                                        width: "100%",
                                         marginBottom: 23,
                                         fontSize: 16,
                                         background: "rgba(33, 33, 33, 1)",
@@ -236,7 +220,6 @@ const AppSearchButtons = (props) => {
                                     <Closeicon style={{ width: 16 }} />
                                 </IconButton>
                             </Tooltip>
-							{/*
                             <Tooltip
                                 title="Delete app"
                                 placement="bottom"
@@ -276,7 +259,6 @@ const AppSearchButtons = (props) => {
                                     <DeleteIcon style={{ height: 15, width: 15, }} />
                                 </IconButton>
                             </Tooltip>
-							*/}
                         </div>
                     </div>
                     <div
@@ -291,17 +273,17 @@ const AppSearchButtons = (props) => {
                 </div>
             ) : null}
             <div style={{
-                display: "flex", height: 70, border: isHover ? "1px solid #f85a3e" : "var(--Container, #212121)", borderRadius: 4, background: isHover ? "var(--Container, #212121)" : "var(--Container, #212121)",
+                display: "flex", height: 70, border: isHover ? "1px solid #f85a3e" : "var(--Container, #212121)", borderRadius: 8, background: isHover ? "var(--Container, #212121)" : "var(--Container, #212121)",
                 alignItems: "center", justifyContent: "center",
             }}
             >
                 <Button
                     fullWidth
+                    color="secondary"
                     style={{
                         height: "100%",
                         width: "100%",
-                        display: "grid",
-                        backgroundColor: themeMode === "dark" ? "#212121" : "#F5F5F5",
+                        display: "grid"
                     }}
                     onClick={(event) => {
                         if (onNodeSelect !== undefined) {

@@ -1,8 +1,7 @@
-import React, { useRef, useState, useEffect, useLayoutEffect, useContext } from "react";
-import { Context } from "../context/ContextApi.jsx";
+import React, { useRef, useState, useEffect, useLayoutEffect } from "react";
 import { toast } from 'react-toastify';
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { getTheme } from '../theme.jsx';
+import theme from '../theme.jsx';
 //import { useAlert 
 
 import { v4 as uuidv4 } from "uuid";
@@ -97,7 +96,7 @@ const AuthenticationOauth2 = (props) => {
 	autoAuth, 
 	authButtonOnly, 
 	isLoggedIn,
-	org_id,
+
 	setFinalized,
   } = props;
 
@@ -113,8 +112,6 @@ const AuthenticationOauth2 = (props) => {
       authenticationType.client_secret !== null &&
       authenticationType.client_secret.length > 0
   );	
-  const {themeMode, brandColor} = useContext(Context);
-  const theme = getTheme(themeMode, brandColor);
 
   const [clientId, setClientId] = React.useState(defaultConfigSet ? authenticationType.client_id : "");
   const [clientSecret, setClientSecret] = React.useState(defaultConfigSet ? authenticationType.client_secret : "");
@@ -151,14 +148,16 @@ const AuthenticationOauth2 = (props) => {
 			navigate(`/login?view=${window.location.pathname}&message=Log in to authenticate this app`)
 		}
 
+		console.log("Should automatically click the auto-auth button?: ", autoAuth)
 		if (autoAuth === true && selectedApp !== undefined) {
 			startOauth2Request() 
 		}
 	}, [])
 
-    if (selectedApp.authentication === undefined) {
-      return null;
-    }
+  if (selectedApp.authentication === undefined) {
+    return null;
+  }
+
 
 	const startOauth2Request = (admin_consent) => {
 		// Admin consent also means to add refresh tokens
@@ -168,7 +167,7 @@ const AuthenticationOauth2 = (props) => {
 		//console.log("APP: ", selectedApp)
 		if (selectedApp.name.toLowerCase() == "outlook_graph" || selectedApp.name.toLowerCase() == "outlook_office365") {
 			handleOauth2Request(
-				"fd55c175-aa30-4fa6-b303-09a29fb3f750",
+				"efe4c3fe-84a1-4821-a84f-23a6cfe8e72d",
 				"",
 				"https://graph.microsoft.com",
 				["Mail.ReadWrite", "Mail.Send", "offline_access"],
@@ -300,11 +299,12 @@ const AuthenticationOauth2 = (props) => {
 
   const handleOauth2Request = (client_id, client_secret, oauth_url, scopes, admin_consent, prompt, skipScopeReplace) => {
 
+	  console.log("SKIP SCOPE: ", skipScopeReplace)
 	  if (skipScopeReplace === false || skipScopeReplace === undefined) {
 
 		  console.log("Selected scopes: ", selectedScopes)
 		  if (selectedScopes !== undefined && selectedScopes !== null && selectedScopes.length > 0) {
-			  //toast("Using your scopes instead of the default ones")
+			  toast("Using your scopes instead of the default ones")
 			  scopes = selectedScopes
 		  }
 	  }
@@ -434,7 +434,7 @@ const AuthenticationOauth2 = (props) => {
 
     const authentication_url = authenticationType.token_uri;
     const redirectUri = `${window.location.protocol}//${window.location.host}/set_authentication`;
-	const workflowId = workflow !== undefined ? workflow.id : ""
+	const workflowId = workflow !== undefined ? workflow.id : "";
     var state = `workflow_id%3D${workflowId}%26reference_action_id%3d${selectedAction.app_id}%26app_name%3d${selectedAction.app_name}%26app_id%3d${selectedAction.app_id}%26app_version%3d${selectedAction.app_version}%26authentication_url%3d${authentication_url}%26scope%3d${resources}%26client_id%3d${client_id}%26client_secret%3d${client_secret}`;
 
 
@@ -453,8 +453,6 @@ const AuthenticationOauth2 = (props) => {
 	if (orgId !== undefined && orgId !== null && orgId.length > 0) {
 		console.log("Adding org_id from user side")
 		state += `%26org_id%3d${orgId}`;
-	}else{
-		state += `%26org_id%3d${org_id}`
 	}
 
     if (oauth_url !== undefined && oauth_url !== null && oauth_url.length > 0) {
@@ -463,56 +461,42 @@ const AuthenticationOauth2 = (props) => {
     }
 
 
-    if (authenticationType.refresh_uri !== undefined && authenticationType.refresh_uri !== null && authenticationType.refresh_uri.length > 0) {
-      state += `%26refresh_uri%3d${authenticationType.refresh_uri}`
+    if (
+      authenticationType.refresh_uri !== undefined &&
+      authenticationType.refresh_uri !== null &&
+      authenticationType.refresh_uri.length > 0
+    ) {
+      state += `%26refresh_uri%3d${authenticationType.refresh_uri}`;
     } else {
-      state += `%26refresh_uri%3d${authentication_url}`
+      state += `%26refresh_uri%3d${authentication_url}`;
     }
 
-	if (workflow?.org_id !== undefined && workflow?.org_id !== null && workflow?.org_id.length > 0) {
-		state += `%26org_id%3d${workflow.org_id}`
-	}
-
-	// FIXME: Should this be =consent?
+		// No prompt forcing
+    //var url = `${authenticationType.redirect_uri}?client_id=${client_id}&redirect_uri=${redirectUri}&response_type=code&prompt=login&scope=${resources}&state=${state}&access_type=offline`;
 	var defaultPrompt = "login"
    	if (prompt !== undefined && prompt !== null && prompt.length > 0) {
-		defaultPrompt = prompt
-	}
-		
-	var url = `${authenticationType.redirect_uri}?client_id=${client_id}&redirect_uri=${redirectUri}&response_type=code&prompt=${defaultPrompt}&scope=${resources}&state=${state}&access_type=offline`;
-	if (admin_consent === true) {
-		console.log("Running Oauth2 WITH admin consent")
-		//url = `${authenticationType.redirect_uri}?client_id=${client_id}&redirect_uri=${redirectUri}&response_type=code&prompt=consent&scope=${resources}&state=${state}&access_type=offline`;
-		url = `${authenticationType.redirect_uri}?client_id=${client_id}&redirect_uri=${redirectUri}&response_type=code&prompt=admin_consent&scope=${resources}&state=${state}&access_type=offline`;
-	}
-
-	if (url !== undefined && url !== null && url.length > 0) {
-		if (url.toLowerCase().includes("{tenant")) {
-			// Check location of {tenant, then find the next } and replace with 'common'. Make sure next } is AFTER {tenant 
-			try { 
-				const tenantIndex = url.toLowerCase().indexOf("{tenant")
-				const substring = url.substring(tenantIndex)
-				const nextBracket = substring.indexOf("}")
-				const newUrl = url.substring(0, tenantIndex) + "common" + url.substring(tenantIndex + nextBracket + 1)
-				url = newUrl
-			} catch (e) {
-				console.log("Failed to replace {tenant} with common: ", e)
-			}
-
+			defaultPrompt = prompt
 		}
-	}
+		
+		var url = `${authenticationType.redirect_uri}?client_id=${client_id}&redirect_uri=${redirectUri}&response_type=code&prompt=${defaultPrompt}&scope=${resources}&state=${state}&access_type=offline`;
 
-	/*
-	console.log("OAUTH2 URL: ", url)
-	return 
-	*/
+		if (admin_consent === true) {
+			console.log("Running Oauth2 WITH admin consent")
+    	//url = `${authenticationType.redirect_uri}?client_id=${client_id}&redirect_uri=${redirectUri}&response_type=code&prompt=consent&scope=${resources}&state=${state}&access_type=offline`;
+    	url = `${authenticationType.redirect_uri}?client_id=${client_id}&redirect_uri=${redirectUri}&response_type=code&prompt=admin_consent&scope=${resources}&state=${state}&access_type=offline`;
+		}
 
-
-	// Force new consent
+		// Force new consent
     //const url = `${authenticationType.redirect_uri}?client_id=${client_id}&redirect_uri=${redirectUri}&response_type=code&scope=${resources}&prompt=consent&state=${state}&access_type=offline`;
 
-	// Admin consent
+		// Admin consent
     //const url = `https://accounts.zoho.com/oauth/v2/auth?response_type=code&client_id=${client_id}&scope=AaaServer.profile.Read&redirect_uri=${redirectUri}&prompt=consent`
+    
+		// &resource=https%3A%2F%2Fgraph.microsoft.com&
+
+    // FIXME: Awful, but works for prototyping
+    // How can we get a callback properly realtime?
+    // How can we properly try-catch without breaks on error?
     try {
       var newwin = window.open(url, "", "width=582,height=700");
       //console.log(newwin)
@@ -527,12 +511,7 @@ const AuthenticationOauth2 = (props) => {
           //alert('"Secure Payment" window closed!');
 
 		  if (getAppAuthentication !== undefined) {
-			// This should be orgId, not action Id as to load auth properly
-			if (workflow !== undefined && workflow !== null && workflow.org_id !== undefined && workflow.org_id !== null && workflow.org_id.length > 0) {
-	 	  		getAppAuthentication(true, true, true, workflow.org_id)
-			} else {
-	 	  		getAppAuthentication(true, true, true) 
-			}
+		  	getAppAuthentication(true, true, true);
 		  }
 
 		  toast("Authentication successful!")
@@ -546,7 +525,7 @@ const AuthenticationOauth2 = (props) => {
 			  setFinalized(true)
 		  }
         } else {
-			//console.log("Not closed")
+			console.log("Not closed")
 		}
       }, 1000);
       //do {
@@ -688,51 +667,51 @@ const AuthenticationOauth2 = (props) => {
 
 	const autoAuthButton = 
 		<Button
-			fullWidth
-			variant="contained"
-			style={{
-				marginBottom: 20, 
-				marginTop: 20, 
-				flex: 1,
-				textTransform: "none",
-				textAlign: "left",
-				justifyContent: "flex-start",
-				backgroundColor: "#ffffff",
-				color: "#2f2f2f",
-				borderRadius: theme.palette?.borderRadius,
-				minWidth:  275, 
-				maxWidth: 275,
-				maxHeight: 50,
-				overflow: "hidden",
-				border: `1px solid ${theme.palette.inputColor}`,
-			}}
-			color="primary"
-			disabled={
-				clientSecret.length > 0 || clientId.length > 0
-			}
-			fullWidth
-			onClick={() => {
-				// Hardcode some stuff?
-				// This could prolly be added to the app itself with a "default" client ID 
-				startOauth2Request()
-			}}
-			color="primary"
-		>
-			{buttonClicked ? (
-				<CircularProgress style={{ color: "#f86a3e", width: 45, height: 45, margin: "auto", }} />
-			) : (
-				<span style={{display: "flex"}}>
-					<img
-						alt={selectedAction.app_name}
-						style={{ margin: 4, minHeight: 30, maxHeight: 30, borderRadius: theme.palette?.borderRadius, }}
-						src={selectedAction.large_image}
-					/>
-					<Typography style={{ margin: 0, marginLeft: 10, marginTop: 8, color: "#2f2f2f",}} variant="body1">
-						One-click Login
-					</Typography>
-				</span>
-			)}
-		</Button>
+				fullWidth
+				variant="contained"
+				style={{
+					marginBottom: 20, 
+					marginTop: 20, 
+					flex: 1,
+					textTransform: "none",
+					textAlign: "left",
+					justifyContent: "flex-start",
+					backgroundColor: "#ffffff",
+					color: "#2f2f2f",
+					borderRadius: theme.palette.borderRadius,
+					minWidth:  300, 
+					maxWidth: 300,
+					maxHeight: 50,
+					overflow: "hidden",
+					border: `1px solid ${theme.palette.inputColor}`,
+				}}
+				color="primary"
+				disabled={
+					clientSecret.length > 0 || clientId.length > 0
+				}
+				fullWidth
+				onClick={() => {
+					// Hardcode some stuff?
+					// This could prolly be added to the app itself with a "default" client ID 
+					startOauth2Request()
+				}}
+				color="primary"
+			>
+				{buttonClicked ? (
+					<CircularProgress style={{ color: "#f86a3e", width: 45, height: 45, margin: "auto", }} />
+				) : (
+					<span style={{display: "flex"}}>
+						<img
+							alt={selectedAction.app_name}
+							style={{ margin: 4, minHeight: 30, maxHeight: 30, borderRadius: theme.palette.borderRadius, }}
+							src={selectedAction.large_image}
+						/>
+						<Typography style={{ margin: 0, marginLeft: 10, marginTop: 5,}} variant="body1">
+							One-click Login
+						</Typography>
+					</span>
+				)}
+			</Button>
 
 	if (authButtonOnly === true && (authenticationType.redirect_uri !== undefined && authenticationType.redirect_uri !== null && authenticationType.redirect_uri.length > 0) && (authenticationType.token_uri !== undefined && authenticationType.token_uri !== null && authenticationType.token_uri.length > 0)) {
 		return autoAuthButton
@@ -741,19 +720,18 @@ const AuthenticationOauth2 = (props) => {
   return (
     <div>
       <DialogTitle>
-        <div style={{ color: theme.palette.text.primary }}>
+        <div style={{ color: "white" }}>
           Authenticate {selectedApp.name.replaceAll("_", " ")}
         </div>
       </DialogTitle>
       <DialogContent>
         <span style={{}}>
-            Oauth2 requires a Client ID and Client Secret to authenticate, defined in your apps' remote website. <span>Your redirect URL: <br/><b>{window.location.origin}/set_authentication</b><br/>
-	  	</span>
+            Oauth2 requires a client ID and secret to authenticate, defined in the remote system. {authenticationType.type === "oauth2-app" ? null : <span>Your redirect URL is <b>{window.location.origin}/set_authentication</b>&nbsp;-&nbsp;</span>}
           <a
             target="_blank"
             rel="norefferer"
             href="/docs/apps#authentication"
-            style={{ textDecoration: "none", color: theme.palette.linkColor}}
+            style={{ textDecoration: "none", color: "#f85a3e" }}
           >
             {" "}
             Learn more about Oauth2 with Shuffle
@@ -761,54 +739,53 @@ const AuthenticationOauth2 = (props) => {
           <div />
         </span>
 
-		{isCloud && registeredApps?.includes(selectedApp?.name?.replaceAll(" ", "_").toLowerCase()) ? 
-			<span>
-				<span style={{display: "flex"}}>
-					{autoAuthButton}
-					
-					{buttonClicked ? 
-						null
-					:
-						<Tooltip
-							color="primary"
-							title={"Force Admin Consent"}
-							placement="top"
-						>
-							<Button
-								fullWidth
-								variant="outlined"
-								style={{
-									maxWidth: 40,
-									marginBottom: 20, 
-									marginTop: 20, 
-									maxHeight: 50, 
-									marginLeft: 10, 
-								}}
-								color="secondary"
-								disabled={
-									clientSecret.length > 0 || clientId.length > 0
-								}
-								fullWidth
-								onClick={() => {
-									// Hardcode some stuff?
-									// This could prolly be added to the app itself with a "default" client ID 
-									//startOauth2Request(true)
-									startOauth2Request()
-								}}
-								color="primary"
-							>
-								<SupervisorAccountIcon />
-							</Button>
-						</Tooltip>
-					}
-				</span>
-				<Typography style={{textAlign: "center", marginTop: 0, marginBottom: 0, }}>
-					OR
-				</Typography>
-			</span>
-		: null}
+				{isCloud && registeredApps.includes(selectedApp.name.toLowerCase()) ? 
+					<span>
+						<span style={{display: "flex"}}>
+							{autoAuthButton}
+							
+							{buttonClicked ? 
+								null
+							:
+								<Tooltip
+									color="primary"
+									title={"Force Admin Consent"}
+									placement="top"
+								>
+									<Button
+										fullWidth
+										variant="outlined"
+										style={{
+											maxWidth: 50,
+											marginBottom: 20, 
+											marginTop: 20, 
+											maxHeight: 50, 
+										}}
+										color="primary"
+										disabled={
+											clientSecret.length > 0 || clientId.length > 0
+										}
+										fullWidth
+										onClick={() => {
+											// Hardcode some stuff?
+											// This could prolly be added to the app itself with a "default" client ID 
+											//startOauth2Request(true)
+											startOauth2Request()
+										}}
+										color="primary"
+									>
+										<SupervisorAccountIcon />
+									</Button>
+								</Tooltip>
+							}
+						</span>
+						<Typography style={{textAlign: "center", marginTop: 0, marginBottom: 0, }}>
+							OR
+						</Typography>
+					</span>
+				: null}
         {/*<TextField
-						style={{backgroundColor: theme.palette.inputColor, borderRadius: theme.palette?.borderRadius,}} 
+						style={{backgroundColor: theme.palette.inputColor, borderRadius: theme.palette.borderRadius,}} 
 						InputProps={{
 							style:{
 							},
@@ -840,14 +817,13 @@ const AuthenticationOauth2 = (props) => {
                 setOauthUrl(data.value);
               }
 
-			  const isNormalOauth = authenticationType.redirect_uri !== undefined && authenticationType.redirect_uri !== null && authenticationType.redirect_uri.length > 0 
+			  const defaultValue = data.name === "url" && authenticationType.token_uri !== undefined && authenticationType.token_uri !== null && authenticationType.token_uri.length > 0 && (authenticationType.authorizationUrl === undefined || authenticationType.authorizationUrl === null || authenticationType.authorizationUrl.length === 0) && authenticationType.type === "oauth2-app" ? authenticationType.token_uri : data.value === undefined || data.value === null ? "" : data.value
 
-			  const defaultValue = !isNormalOauth && data.name === "url" && authenticationType.token_uri !== undefined && authenticationType.token_uri !== null && authenticationType.token_uri.length > 0 && (authenticationType.authorizationUrl === undefined || authenticationType.authorizationUrl === null || authenticationType.authorizationUrl.length === 0) && authenticationType.type === "oauth2-app" ? authenticationType.token_uri : data.value === undefined || data.value === null ? "" : data.value
 
-			  const fieldname = !isNormalOauth && data.name === "url" && authenticationType.grant_type !== undefined && authenticationType.grant_type !== null && authenticationType.grant_type.length > 0 && authenticationType.type === "oauth2-app" ? "Token URL" : data.name
+			  const fieldname = data.name === "url" && authenticationType.grant_type !== undefined && authenticationType.grant_type !== null && authenticationType.grant_type.length > 0 && authenticationType.type === "oauth2-app" ? "Token URL" : data.name
 
               return (
-                <div key={index} style={{ marginTop: !isNormalOauth && authenticationType.type === "oauth2-app" ? 10 : 0, }}>
+                <div key={index} style={{ marginTop: authenticationType.type === "oauth2-app" ? 10 : 0, }}>
                   <LockOpenIcon style={{ marginRight: 10 }} />
 
 				  <b>{fieldname}</b>
@@ -899,7 +875,7 @@ const AuthenticationOauth2 = (props) => {
                     <TextField
                       style={{
                         backgroundColor: theme.palette.inputColor,
-                        borderRadius: theme.palette?.borderRadius,
+                        borderRadius: theme.palette.borderRadius,
                       }}
                       InputProps={{
                         style: {
@@ -930,7 +906,7 @@ const AuthenticationOauth2 = (props) => {
               style={{
                 marginTop: 20,
                 backgroundColor: theme.palette.inputColor,
-                borderRadius: theme.palette?.borderRadius,
+                borderRadius: theme.palette.borderRadius,
               }}
               InputProps={{
                 style: {
@@ -948,7 +924,7 @@ const AuthenticationOauth2 = (props) => {
             <TextField
               style={{
                 backgroundColor: theme.palette.inputColor,
-                borderRadius: theme.palette?.borderRadius,
+                borderRadius: theme.palette.borderRadius,
 								marginBottom: 10, 
               }}
               InputProps={{
@@ -970,7 +946,7 @@ const AuthenticationOauth2 = (props) => {
 					<TextField
 					  style={{
 						backgroundColor: theme.palette.inputColor,
-						borderRadius: theme.palette?.borderRadius,
+						borderRadius: theme.palette.borderRadius,
 					  }}
 					  InputProps={{
 						style: {
@@ -988,7 +964,7 @@ const AuthenticationOauth2 = (props) => {
 					<TextField
 					  style={{
 						backgroundColor: theme.palette.inputColor,
-						borderRadius: theme.palette?.borderRadius,
+						borderRadius: theme.palette.borderRadius,
 						marginBottom: 10, 
 					  }}
 					  InputProps={{
@@ -1021,6 +997,7 @@ const AuthenticationOauth2 = (props) => {
 											color: "white",
 											padding: 5, 
 											minWidth: 300,
+											maxWidth: 300,
 										}}
                   						onChange={(e, value) => {
 											//handleScopeChange(e)
@@ -1067,7 +1044,7 @@ const AuthenticationOauth2 = (props) => {
           style={{
             marginBottom: 40,
             marginTop: 20,
-            borderRadius: theme.palette?.borderRadius,
+            borderRadius: theme.palette.borderRadius,
           }}
           disabled={
             clientSecret.length === 0 || clientId.length === 0 || buttonClicked || (allscopes.length !== 0 && selectedScopes.length === 0)
@@ -1098,7 +1075,7 @@ const AuthenticationOauth2 = (props) => {
             <Button
               style={{
                 marginLeft: 10,
-                borderRadius: theme.palette?.borderRadius,
+                borderRadius: theme.palette.borderRadius,
               }}
               disabled={clientSecret.length === 0 || clientId.length === 0}
               variant="text"
