@@ -1,9 +1,10 @@
 name: dockerbuild
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - main 
+      - main
     paths:
       - "**"
       - "!.github/**"
@@ -19,23 +20,19 @@ jobs:
         include:
           - app: frontend
             path: frontend
-            version: 1.4.2
+            version: 2.1.2
             experimental: true
           - app: backend
             path: backend
-            version: 1.4.2
-            experimental: true
-          - app: app_sdk
-            path: backend/app_sdk
-            version: 1.4.2
+            version: 2.1.2
             experimental: true
           - app: orborus
             path: functions/onprem/orborus
-            version: 1.4.2
+            version: 2.1.2
             experimental: true
           - app: worker
             path: functions/onprem/worker
-            version: 1.4.2
+            version: 2.1.2
             experimental: true
     steps:
       - name: Checkout
@@ -79,9 +76,7 @@ jobs:
             ghcr.io/shuffle/shuffle-${{ matrix.app }}:${{ matrix.version }}
             ghcr.io/shuffle/shuffle-${{ matrix.app }}:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/shuffle-${{ matrix.app }}:${{ matrix.version }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/shuffle-${{ matrix.app }}:latest
             frikky/shuffle-${{ matrix.app }}:${{ matrix.version }}
-            frikky/shuffle-${{ matrix.app }}:latest
             frikky/shuffle:${{ matrix.app }}
 
       - name: Image digest

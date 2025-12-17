@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import ReactGA from 'react-ga4';
-import theme from '../theme.jsx';
+import {getTheme} from '../theme.jsx';
 import {Link} from 'react-router-dom';
 import { Search as SearchIcon, CloudQueue as CloudQueueIcon, Code as CodeIcon } from '@mui/icons-material';
 import { toast } from 'react-toastify';
-
+import { Context } from '../context/ContextApi.jsx';
 //import algoliasearch from 'algoliasearch/lite';
 import algoliasearch from 'algoliasearch';
 import { InstantSearch, connectSearchBox, connectHits } from 'react-instantsearch-dom';
@@ -20,16 +20,14 @@ import {
 } from '@mui/material';
 
 import aa from 'search-insights'
-const searchClient = algoliasearch("JNSS5CFDZZ", "db08e40265e2941b9a7d8f644b6e5240")
+const searchClient = algoliasearch("JNSS5CFDZZ", "c8f882473ff42d41158430be09ec2b4e")
 const Appsearch = props => {
-	const { maxRows, showName, showSuggestion, isMobile, globalUrl, parsedXs, newSelectedApp, setNewSelectedApp, defaultSearch, showSearch, ConfiguredHits, userdata, cy, isCreatorPage, actionImageList, setActionImageList, setUserSpecialzedApp }  = props
-
-    const isCloud = window.location.host === "localhost:3002" || window.location.host === "shuffler.io";
+	const { maxRows, showName, showSuggestion, isMobile, globalUrl, parsedXs, newSelectedApp, setNewSelectedApp, defaultSearch, showSearch, ConfiguredHits, userdata, cy, isCreatorPage, actionImageList, setActionImageList, setUserSpecialzedApp, inputHeight, }  = props
+	const { themeMode } = useContext(Context)
+	const theme = getTheme(themeMode)
+    const isCloud = (window.location.host === "localhost:3002" || window.location.host === "shuffler.io") ? true : (process.env.IS_SSR === "true");
 	const rowHandler = maxRows === undefined || maxRows === null ? 50 : maxRows
 	const xs = parsedXs === undefined || parsedXs === null ? 12 : parsedXs
-	//const theme = useTheme();
-	//const [apps, setApps] = React.useState([]);
-	//const [filteredApps, setFilteredApps] = React.useState([]);
 	const [formMail, setFormMail] = React.useState("");
 	const [message, setMessage] = React.useState("");
 	const [formMessage, setFormMessage] = React.useState("");
@@ -39,6 +37,8 @@ const Appsearch = props => {
 	const innerColor = "rgba(255,255,255,0.65)"
 	const borderRadius = 3
 	window.title = "Shuffle | Apps | Find and integration any app"
+
+	const parsedInputHeight = inputHeight === undefined || inputHeight === null ? 295 : inputHeight 
 
 
 	// value={currentRefinement}
@@ -53,11 +53,14 @@ const Appsearch = props => {
 		return (
 		  <form noValidate action="" role="search">
 				<TextField 
+					autoFocus
+					autoComplete="off"
+					autocomplete="off"
 					fullWidth
-					style={{backgroundColor: "#2F2F2F", borderRadius: borderRadius, width: "100%",}} 
+					style={{backgroundColor: theme.palette.textFieldStyle.backgroundColor, borderRadius: borderRadius, width: "100%",}} 
 					InputProps={{
 						style:{
-							color: "white",
+							color: theme.palette.textFieldStyle.color,
 							fontSize: "1em",
 							height: 50,
 						},
@@ -90,10 +93,10 @@ const Appsearch = props => {
 		var counted = 0
 
 		return (
-			<Grid container spacing={0} style={{border: "1px solid rgba(255,255,255,0.2)", maxHeight: 250, minHeight: 250, overflowY: "auto", overflowX: "hidden", }}>
+			<Grid container spacing={0} style={{border: "1px solid rgba(255,255,255,0.2)", maxHeight: parsedInputHeight, minHeight: parsedInputHeight, overflowY: "auto", overflowX: "hidden", }}>
 				{hits.map((data, index) => {
 					const paperStyle = {
-						backgroundColor: index === mouseHoverIndex ? "rgba(255,255,255,0.8)" : "#2F2F2F",
+						backgroundColor: index === mouseHoverIndex ? theme.palette.hoverColor : theme.palette.textFieldStyle.backgroundColor,
 						color: index === mouseHoverIndex ? theme.palette.inputColor : "rgba(255,255,255,0.8)", 
 						// border: newSelectedApp.objectID !== data.objectID ? `1px solid rgba(255,255,255,0.2)` : "2px solid #f86a3e", 
 						textAlign: "left",
@@ -181,7 +184,7 @@ const Appsearch = props => {
 	const CustomHits = connectHits(InputHits)
 
 	return (
-		<div style={{width: isMobile ? null : 287, height: 295, padding: "16px 16px 267px 16px", alignItems: "center", gap: 138,}}>
+		<div style={{width: isMobile ? null : 287, minHeight: parsedInputHeight, maxHeight: parsedInputHeight, padding: "16px 16px 64px 16px", alignItems: "center", }}>
 			<InstantSearch searchClient={searchClient} indexName="appsearch">
 				<div style={{maxWidth: 450, margin: "auto", }}>
 					<CustomSearchBox />

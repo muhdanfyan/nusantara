@@ -40,13 +40,13 @@ update_install_pre() {
     echo -e "\e[1;32m Step 1 Completed \e[0m"
 }
 
-# Function for Install all module: Wazuh, IRIS, Shuffle, MISP
+# Function for Install all module: MISP, Wazuh, IRIS, Shuffle
 install_module() {
     echo
     echo -e "\e[1;32m -- Step 2: Install T-Guard SOC Package -- \e[0m"
     echo
 
-    # --- Initial Network Configuration ---
+    # --- Initial Network Configuration ---    
     # Ask the user for the network environment just once.
     echo "Please select the network environment for this installation."
     PS3=$'\nChoose an option: '
@@ -59,6 +59,7 @@ install_module() {
                 echo -e "\e[1;34m[INFO] Private IP Address:\e[1;33m $IP_ADDRESS\e[0m"
                 break
                 ;;
+
             2)
                 # Get the public IP address
                 IP_ADDRESS=$(curl -s ip.me -4)
@@ -66,13 +67,16 @@ install_module() {
                 echo -e "\e[1;34m[INFO] Public IP Address:\e[1;33m $IP_ADDRESS\e[0m"
                 break
                 ;;
+
             3)
                 echo "back to main menu..."
                 return # Exits the function and goes back to the main script menu
                 ;;
+
             *)
                 echo "Invalid option. Please try again."
                 ;;
+
         esac
     done
 
@@ -87,13 +91,12 @@ install_module() {
 
     # --- 1. Installing Wazuh (SIEM) & Deploying Agent ---
     echo -e "\e[1;36m--> Installing Wazuh...\e[0m"
-    cd wazuh
-    sudo docker network create shared-network &>/dev/null # Create network if not exists
+    cd wazuh-docker/single-node
     sudo docker compose -f generate-indexer-certs.yml run --rm generator
     sudo docker compose up -d
 
     # Check Wazuh Status
-    containers=("wazuh-wazuh.dashboard-1" "wazuh-wazuh.manager-1" "wazuh-wazuh.indexer-1")
+    containers=("single-node-wazuh.dashboard-1" "single-node-wazuh.manager-1" "single-node-wazuh.indexer-1")
     for container in "${containers[@]}"; do
         running_status=$(sudo docker inspect --format='{{.State.Running}}' $container 2>/dev/null)
         if [ "$running_status" != "true" ]; then
@@ -123,22 +126,23 @@ install_module() {
     sudo systemctl enable wazuh-agent
     sudo systemctl start wazuh-agent
     echo -e "\e[1;32mWazuh Agent deployed successfully.\e[0m"
-    cd ..
-    
+
+    cd ../..
+
     # --- 2. Installing Shuffle (SOAR) ---
     echo -e "\n\e[1;36m--> Installing Shuffle...\e[0m"
-    cd shuffle
+    cd Shuffle
     mkdir -p shuffle-database 
     sudo chown -R 1000:1000 shuffle-database
     sudo swapoff -a
     sudo docker compose up -d
+    sudo docker restart shuffle-opensearch
     echo -e "\e[1;32mShuffle deployment initiated.\e[0m"
     
     # Check Shuffle Status
     echo -e "\e[1;34m[INFO] Verifying Shuffle container status...\e[0m"
     shuffle_containers=("shuffle-backend" "shuffle-orborus" "shuffle-frontend")
     for container in "${shuffle_containers[@]}"; do
-        # It can take a moment for containers to start, so we wait briefly
         sleep 10
         running_status=$(sudo docker inspect --format='{{.State.Running}}' "$container" 2>/dev/null)
         if [ "$running_status" != "true" ]; then
@@ -150,14 +154,13 @@ install_module() {
     done
     echo
     echo -e "\e[1;32mShuffle deployment is successful and all core containers are running.\e[0m"
-
     cd ..
-
+    
     # --- 3. Installing DFIR-IRIS (Incident Response Platform) ---
     echo -e "\n\e[1;36m--> Installing DFIR-IRIS...\e[0m"
     cd iris-web
-    sudo docker compose build
-    sudo docker compose up -d
+    sudo docker compose pull
+    sudo docker compose up -d     
     echo -e "\e[1;32mDFIR-IRIS deployment initiated.\e[0m"
 
     # Check DFIR-IRIS Status
@@ -175,23 +178,23 @@ install_module() {
     done
     echo
     echo -e "\e[1;32mDFIR-IRIS deployment is successful and all core containers are running.\e[0m"
-
     cd ..
 
-    # --- 4. Installing MISP (Threat Intelligence) ---
-    echo -e "\n\e[1;36m--> Installing MISP...\e[0m"
-    cd misp
-    
-    # Automatically configure MISP using the determined IP address
-    echo -e "\e[1;34m[INFO] Configuring MISP with Base URL: https://$IP_ADDRESS:1443\e[0m"
+   # --- 4. Installing MISP (Threat Intelligence) ---
+    echo -e "\e[1;36m--> Installing MISP...\e[0m"
+    cd misp-docker
     sed -i "s|BASE_URL=.*|BASE_URL='https://$IP_ADDRESS:1443'|" template.env
+    sed -i 's|^CORE_HTTP_PORT=.*|CORE_HTTP_PORT=8081|' template.env
+    sed -i 's|^CORE_HTTPS_PORT=.*|CORE_HTTPS_PORT=1443|' template.env
     cp template.env .env
-    sudo docker compose up -d
+    sudo docker compose up -d 2>/dev/null
     echo -e "\e[1;32mMISP deployment initiated.\e[0m"
-    
+    sudo docker restart misp-docker-db-1
+    sudo docker restart misp-docker-misp-core-1
+    sudo docker restart misp-docker-misp-modules-1
     # Check MISP Status
     echo -e "\e[1;34m[INFO] Verifying MISP container status...\e[0m"
-    misp_containers=("misp-misp-core-1" "misp-misp-modules-1" "misp-mail-1" "misp-redis-1" "misp-db-1")
+    misp_containers=("misp-docker-misp-core-1" "misp-docker-misp-modules-1" "misp-docker-mail-1" "misp-docker-redis-1" "misp-docker-db-1")
     for container in "${misp_containers[@]}"; do
         sleep 10
         running_status=$(sudo docker inspect --format='{{.State.Running}}' "$container" 2>/dev/null)
@@ -204,12 +207,12 @@ install_module() {
     done
     echo
     echo -e "\e[1;32m MISP deployment is successful and all core containers are running.\e[0m"
-    
     cd ..
+    
 
     echo
     echo -e "\e[1;32m Step 2 Completed: All T-Guard SOC packages have been deployed. \e[0m"
-    
+
     # Wait the initialization
     echo -e "\e[1;34m[INFO] Waiting for 60 seconds for all services to initialize properly...\e[0m"
     
@@ -233,16 +236,16 @@ install_module() {
     printf "|${WHITE}      T-Guard SOC Package - Dashboard Access Default Credentials      ${GREEN}|\n"
     printf "+----------------------------------------------------------------------+\n"
     
+    # MISP Details
+    printf "  ${BLUE}%-18s ${YELLOW}%-49s ${GREEN}\n" "MISP (Threat Intel)" "https://$IP_ADDRESS:1443"
+    printf "  ${WHITE}%-18s ${NC}%-49s ${GREEN}\n" " ├─ Username" "admin@admin.test"
+    printf "  ${WHITE}%-18s ${NC}%-49s ${GREEN}\n" " └─ Password" "admin"
+    printf "${GREEN}+----------------------------------------------------------------------+\n"
+
     # Wazuh Details
     printf "  ${BLUE}%-18s ${YELLOW}%-49s ${GREEN}\n" "Wazuh (SIEM)" "https://$IP_ADDRESS"
     printf "  ${WHITE}%-18s ${NC}%-49s ${GREEN}\n" " ├─ Username" "admin"    
     printf "  ${WHITE}%-18s ${NC}%-49s ${GREEN}\n" " └─ Password" "SecretPassword"    
-    printf "${GREEN}+----------------------------------------------------------------------+\n"
-
-    # Shuffle Details
-    printf "  ${BLUE}%-18s ${YELLOW}%-49s ${GREEN}\n" "Shuffle (SOAR)" "http://$IP_ADDRESS:3001"
-    printf "  ${WHITE}%-18s ${NC}%-49s ${GREEN}\n" " ├─ Username" "administrator"
-    printf "  ${WHITE}%-18s ${NC}%-49s ${GREEN}\n" " └─ Password" "MySuperAdminPassword!"
     printf "${GREEN}+----------------------------------------------------------------------+\n"
 
     # DFIR-IRIS Details
@@ -251,52 +254,52 @@ install_module() {
     printf "  ${WHITE}%-18s ${NC}%-49s ${GREEN}\n" " └─ Password" "MySuperAdminPassword!"
     printf "${GREEN}+----------------------------------------------------------------------+\n"
 
-    # MISP Details
-    printf "  ${BLUE}%-18s ${YELLOW}%-49s ${GREEN}\n" "MISP (Threat Intel)" "https://$IP_ADDRESS:1443"
-    printf "  ${WHITE}%-18s ${NC}%-49s ${GREEN}\n" " ├─ Username" "admin@admin.test"
-    printf "  ${WHITE}%-18s ${NC}%-49s ${GREEN}\n" " └─ Password" "admin"
-    printf "${GREEN}+----------------------------------------------------------------------+\n\n"
+    # Shuffle Details
+    printf "  ${BLUE}%-18s ${YELLOW}%-49s ${GREEN}\n" "Shuffle (SOAR)" "http://$IP_ADDRESS:3001"
+    printf "${GREEN}+----------------------------------------------------------------------+\n"
+
 }
 
+# Integrate modules and Perform other configurations
 integrate_module() {
     echo
     echo -e "\e[1;32m -- Step 3: Perform Integrations -- \e[0m"
     echo
     
-    # --- 1. IRIS <-> Wazuh Integration ---
+    # --- 1. IRIS <-> Wazuh Integration ---    
     echo -e "\n\e[1;36m--- Configuring IRIS <-> Wazuh --- \e[0m"
-    CONFIG_FILE="$(pwd)/wazuh/config/wazuh_cluster/wazuh_manager.conf"
+    CONFIG_FILE="$(pwd)/wazuh-docker/single-node/config/wazuh_cluster/wazuh_manager.conf"
     echo -n "Please enter your IRIS API Key: "
     read -r API_KEY
     sed -i "s|<api_key>.*</api_key>|<api_key>$API_KEY</api_key>|" "$CONFIG_FILE"
     sudo docker exec -i iriswebapp_db psql -U postgres -d iris_db -c "INSERT INTO user_client (id, user_id, client_id, access_level, allow_alerts) VALUES (1, 1, 1, 4, 't');"
-    sudo cp wazuh/custom-integrations/custom-iris.py /var/lib/docker/volumes/wazuh_wazuh_integrations/_data/custom-iris.py
-    sudo docker exec -ti wazuh-wazuh.manager-1 chown root:wazuh /var/ossec/integrations/custom-iris.py
-    sudo docker exec -ti wazuh-wazuh.manager-1 chmod 750 /var/ossec/integrations/custom-iris.py
-    sudo docker exec -ti wazuh-wazuh.manager-1 yum install python3-pip -y
-    sudo docker exec -ti wazuh-wazuh.manager-1 pip3 install requests
-    cd wazuh && sudo docker compose restart && cd ..
+    sudo cp wazuh-docker/single-node/custom-integrations/custom-iris.py /var/lib/docker/volumes/single-node_wazuh_integrations/_data/custom-iris.py
+    sudo docker exec -ti single-node-wazuh.manager-1 chown root:wazuh /var/ossec/integrations/custom-iris.py
+    sudo docker exec -ti single-node-wazuh.manager-1 chmod 750 /var/ossec/integrations/custom-iris.py
+    sudo docker exec -ti single-node-wazuh.manager-1 yum install python3-pip -y
+    sudo docker exec -ti single-node-wazuh.manager-1 pip3 install requests
+    cd wazuh-docker/single-node && sudo docker compose restart && cd ../..
     echo -e "\e[1;32m IRIS-Wazuh integration complete.\e[0m"
     echo
 
-    # --- 2. MISP <-> Wazuh Integration ---
+    # --- 2. MISP <-> Wazuh Integration --- 
     echo -e "\n\e[1;36m--- Configuring MISP <-> Wazuh --- \e[0m"
-    sudo cp wazuh/custom-integrations/custom-misp.py /var/lib/docker/volumes/wazuh_wazuh_integrations/_data/custom-misp.py
-    sudo docker exec -ti wazuh-wazuh.manager-1 chown root:wazuh /var/ossec/integrations/custom-misp.py
-    sudo docker exec -ti wazuh-wazuh.manager-1 chmod 750 /var/ossec/integrations/custom-misp.py
-    sudo cp wazuh/custom-integrations/local_rules.xml /var/lib/docker/volumes/wazuh_wazuh_etc/_data/rules/local_rules.xml
-    sudo docker exec -ti wazuh-wazuh.manager-1 chown wazuh:wazuh /var/ossec/etc/rules/local_rules.xml
-    sudo docker exec -ti wazuh-wazuh.manager-1 chmod 550 /var/ossec/etc/rules/local_rules.xml
-    cd wazuh && sudo docker compose restart && cd ..
+    sudo cp wazuh-docker/single-node/custom-integrations/custom-misp.py /var/lib/docker/volumes/single-node_wazuh_integrations/_data/custom-misp.py
+    sudo docker exec -ti single-node-wazuh.manager-1 chown root:wazuh /var/ossec/integrations/custom-misp.py
+    sudo docker exec -ti single-node-wazuh.manager-1 chmod 750 /var/ossec/integrations/custom-misp.py
+    sudo cp wazuh-docker/single-node/custom-integrations/local_rules.xml /var/lib/docker/volumes/single-node_wazuh_etc/_data/rules/local_rules.xml
+    sudo docker exec -ti single-node-wazuh.manager-1 chown wazuh:wazuh /var/ossec/etc/rules/local_rules.xml
+    sudo docker exec -ti single-node-wazuh.manager-1 chmod 550 /var/ossec/etc/rules/local_rules.xml
+    cd wazuh-docker/single-node && sudo docker compose restart && cd ../..
     echo -e "\e[1;32m MISP-Wazuh integration complete.\e[0m"
     echo
 
-    # --- 3. VirusTotal <-> Wazuh Integration ---
+    # --- 3. VirusTotal <-> Wazuh Integration --- 
     echo -e "\n\e[1;36m--- Configuring VirusTotal <-> Wazuh --- \e[0m"
     # Agent Setup
     USECASE_DIR="$(pwd)/usecase/webdeface"
-    CONFIG_AGENT="$(pwd)/wazuh/custom-integrations/add_vtwazuh_config-agent.conf"
-    cd wazuh/custom-integrations
+    CONFIG_AGENT="$(pwd)/wazuh-docker/sinlge-node/custom-integrations/add_vtwazuh_config-agent.conf"
+    cd wazuh-docker/single-node/custom-integrations
     sed -i "s|<directories report_changes=\"yes\" whodata=\"yes\" realtime=\"yes\">\$USECASE_DIR</directories>|<directories report_changes=\"yes\" whodata=\"yes\" realtime=\"yes\">$USECASE_DIR</directories>|" "$CONFIG_AGENT"
     sudo bash -c "cat add_vtwazuh_config-agent.conf >> /var/ossec/etc/ossec.conf"
     sudo apt update
@@ -311,21 +314,21 @@ integrate_module() {
     sed -i "s|<api_key>.*</api_key>|<api_key>$VT_API_KEY</api_key>|" "add_vtwazuh_config-server.conf"
     cat add_vtwazuh_config-server.conf >> ../config/wazuh_cluster/wazuh_manager.conf
     cat add_vtwazuh_rules.xml >> local_rules.xml
-    sudo cp local_rules.xml /var/lib/docker/volumes/wazuh_wazuh_etc/_data/rules/local_rules.xml
-    sudo docker exec -ti wazuh-wazuh.manager-1 chown wazuh:wazuh /var/ossec/etc/rules/local_rules.xml
-    sudo docker exec -ti wazuh-wazuh.manager-1 chmod 550 /var/ossec/etc/rules/local_rules.xml
-    cd .. && sudo docker compose restart && cd ..
+    sudo cp local_rules.xml /var/lib/docker/volumes/single-node_wazuh_etc/_data/rules/local_rules.xml
+    sudo docker exec -ti single-node-wazuh.manager-1 chown wazuh:wazuh /var/ossec/etc/rules/local_rules.xml
+    sudo docker exec -ti single-node-wazuh.manager-1 chmod 550 /var/ossec/etc/rules/local_rules.xml
+    cd wazuh-docker/single-node && sudo docker compose restart && cd ../..
     echo -e "\e[1;32m VirusTotal-Wazuh integration complete.\e[0m"
     echo
 
-    # --- 4. Shuffle <-> Wazuh Integration ---
+    # --- 4. Shuffle <-> Wazuh Integration --- 
     echo -e "\n\e[1;36m--- Configuring Shuffle <-> Wazuh --- \e[0m"
-    cd wazuh/custom-integrations
+    cd wazuh-docker/single-node/custom-integrations
     echo -n "Please enter your Shuffle Webhook URL: "
     read -r SHUFFLE_URL
     sed -i "s|<hook_url>.*</hook_url>|<hook_url>$SHUFFLE_URL</hook_url>|" "add_shufflewazuh_config.conf"
     cat add_shufflewazuh_config.conf >> ../config/wazuh_cluster/wazuh_manager.conf
-    cd .. && sudo docker compose restart && cd ..
+    cd wazuh-docker/single-node && sudo docker compose restart && cd ../..
     echo -e "\e[1;32m Shuffle-Wazuh integration complete.\e[0m"
     echo
     
