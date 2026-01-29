@@ -80,25 +80,15 @@ const useStyles = makeStyles((theme) => ({
   datagrid: {
     border: 0,
     "& .MuiDataGrid-columnsContainer": {
-      backgroundColor:
-        theme.palette.type === "light" ? "#fafafa" : theme.palette.inputColor,
     },
     "& .MuiDataGrid-iconSeparator": {
       display: "none",
     },
     "& .MuiDataGrid-colCell, .MuiDataGrid-cell": {
-      borderRight: `1px solid ${
-        theme.palette.type === "light" ? "white" : "#303030"
-      }`,
     },
     "& .MuiDataGrid-columnsContainer, .MuiDataGrid-cell": {
-      borderBottom: `1px solid ${
-        theme.palette.type === "light" ? "#f0f0f0" : "#303030"
-      }`,
     },
     "& .MuiDataGrid-cell": {
-      color:
-        theme.palette.type === "light" ? "white" : "rgba(255,255,255,0.65)",
     },
     "& .MuiPaginationItem-root, .MuiTablePagination-actions, .MuiTablePagination-caption":
       {
@@ -2467,7 +2457,7 @@ const GettingStarted = (props) => {
                 maxWidth: 1024,
                 zIndex: 11,
                 border: "1px solid rgba(255,255,255,0.1)",
-                borderRadius: theme.palette.borderRadius,
+                borderRadius: theme.palette?.borderRadius,
                 textAlign: "center",
                 overflow: "auto",
               }}

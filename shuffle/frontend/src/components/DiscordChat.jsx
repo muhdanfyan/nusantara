@@ -16,6 +16,7 @@ import {
     ListItemText,
 } from '@mui/material';
 import { Search as SearchIcon } from '@mui/icons-material';
+import useDebouncedCallback from '../utils/useDebouncedCallback.jsx';
 
 
 const searchClient = algoliasearch("JNSS5CFDZZ", "1e5f29b1550939855de5915eac3bf5f7");
@@ -69,13 +70,28 @@ const DiscordChat = props => {
 	}
 
     const SearchBox = ({ currentRefinement, refine }) => {
+        const [inputValue, setInputValue] = useState("");
+        const debouncedRefine = useDebouncedCallback((value) => refine(value), 300);
+
+        useEffect(() => {
+            setInputValue(currentRefinement || "");
+        }, [currentRefinement]);
         return (
                 <form noValidate action="" role="search">
                     <TextField
                         fullWidth
-                        value={currentRefinement}
-                        onChange={(event) => refine(event.currentTarget.value)}
-                        placeholder="Search Discord Chats"
+                        value={inputValue}
+                        onChange={(event) => {
+                            const value = event.currentTarget.value;
+                            setInputValue(value);
+                            debouncedRefine(value);
+                        }}
+                        onKeyDown={(event) => {
+                            if(event.key === "Enter") {
+                                event.preventDefault();
+                            }
+                        }}
+                        placeholder="Search Discord Chats..."
                         style={{ backgroundColor: theme.palette.inputColor, borderRadius: borderRadius, margin: 10, width: "100%", }}
                         InputProps={{
                             style: {
@@ -143,7 +159,7 @@ const DiscordChat = props => {
     const CustomHits = connectHits(Hits);
 
     return (
-        <div style={{ width: "100%", textAlign:"center", position: "relative", height: "100%", }}>
+        <div style={{textAlign:"center", position: "relative", height: "100%", padding:"0px 240px" }}>
             <InstantSearch searchClient={searchClient} indexName="discord_chat">
                 <div style={{ maxWidth: 450, margin: "auto", marginTop: 15, marginBottom: 5, }}>
                     <CustomSearchBox />

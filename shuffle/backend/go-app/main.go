@@ -3,6 +3,9 @@ package main
 import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/shuffle/shuffle-shared"
+	"github.com/shuffle/singul/pkg"
+
+	"net/http/pprof"
 
 	"archive/zip"
 	"bufio"
@@ -18,6 +21,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -31,10 +35,12 @@ import (
 	"github.com/frikky/kin-openapi/openapi2conv"
 	"github.com/frikky/kin-openapi/openapi3"
 
-	//"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-billy/v5/memfs"
+
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	gitProxy "github.com/go-git/go-git/v5/plumbing/transport"
+	http2 "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/go-git/go-git/v5/storage/memory"
 
 	// Random
@@ -42,10 +48,12 @@ import (
 	newscheduler "github.com/carlescere/scheduler"
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
+	"sort"
 
 	// Web
 	"github.com/gorilla/mux"
-	http2 "gopkg.in/src-d/go-git.v4/plumbing/transport/http"
+	//http2 "gopkg.in/src-d/go-git.v5/plumbing/transport/http"
+	//http2 "github.com/go-git/go-git/plumbing/transport/http"
 )
 
 // This is used to handle onprem vs offprem databases etc
@@ -58,13 +66,18 @@ var registryName = "registry.hub.docker.com"
 var runningEnvironment = "onprem"
 
 var syncUrl = "https://shuffler.io"
+var debug = false
+
+//var syncUrl = "http://localhost:5002"
 
 type retStruct struct {
-	Success         bool                 `json:"success"`
-	SyncFeatures    shuffle.SyncFeatures `json:"sync_features"`
-	SessionKey      string               `json:"session_key"`
-	IntervalSeconds int64                `json:"interval_seconds"`
-	Reason          string               `json:"reason"`
+	Success         bool                          `json:"success"`
+	SyncFeatures    shuffle.SyncFeatures          `json:"sync_features"`
+	SessionKey      string                        `json:"session_key"`
+	IntervalSeconds int64                         `json:"interval_seconds"`
+	Reason          string                        `json:"reason"`
+	Subscriptions   []shuffle.PaymentSubscription `json:"subscriptions"`
+	Licensed        bool                          `json:"licensed"`
 }
 
 type Contact struct {
@@ -256,7 +269,6 @@ type Hook struct {
 	Environment string       `json:"environment" datastore:"environment"`
 }
 
-
 func GetUsersHandler(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"id": "12345",
@@ -315,7 +327,7 @@ func checkError(cmdName string, cmdArgs []string) error {
 	scanner := bufio.NewScanner(cmdReader)
 	go func() {
 		for scanner.Scan() {
-			fmt.Printf("Out: %s\n", scanner.Text())
+			log.Printf("Out: %s\n", scanner.Text())
 		}
 	}()
 
@@ -396,10 +408,56 @@ func checkUsername(Username string) error {
 	return nil
 }
 
+func isGitNoProxy(rawURL string) bool {
+	noProxy := os.Getenv("NO_PROXY")
+	if noProxy == "" {
+		return false
+	}
+
+	if noProxy == "*" {
+		return true
+	}
+
+	noProxyList := strings.Split(noProxy, ",")
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	host := parsedURL.Hostname()
+
+	for _, value := range noProxyList {
+		value = strings.TrimSpace(value)
+
+		if host == value {
+			return true
+		}
+		if strings.HasPrefix(value, "*.") && strings.HasSuffix(host, value[2:]) {
+			return true
+		}
+	}
+	return false
+}
+
+func checkGitProxy(cloneOptions *git.CloneOptions) *git.CloneOptions {
+	if os.Getenv("HTTP_PROXY") != "" && !isGitNoProxy(cloneOptions.URL) {
+		cloneOptions.ProxyOptions = gitProxy.ProxyOptions{
+			URL: os.Getenv("HTTP_PROXY"),
+		}
+	}
+
+	if os.Getenv("HTTPS_PROXY") != "" && !isGitNoProxy(cloneOptions.URL) {
+		cloneOptions.ProxyOptions = gitProxy.ProxyOptions{
+			URL: os.Getenv("HTTPS_PROXY"),
+		}
+	}
+
+	return cloneOptions
+}
+
 func createNewUser(username, password, role, apikey string, org shuffle.OrgMini) error {
 	// Returns false if there is an issue
 	// Use this for register
-	err := shuffle.CheckPasswordStrength(password)
+	err := shuffle.CheckPasswordStrength(username, password)
 	if err != nil {
 		log.Printf("[WARNING] Bad password strength: %s", err)
 		return err
@@ -412,8 +470,6 @@ func createNewUser(username, password, role, apikey string, org shuffle.OrgMini)
 	}
 
 	ctx := context.Background()
-	//users, err := FindUser(ctx context.Context, username string) ([]User, error) {
-
 	users, err := shuffle.FindUser(ctx, strings.ToLower(strings.TrimSpace(username)))
 	if err != nil && len(users) == 0 {
 		log.Printf("[WARNING] Failed getting user %s: %s", username, err)
@@ -438,7 +494,6 @@ func createNewUser(username, password, role, apikey string, org shuffle.OrgMini)
 	newUser.Active = true
 	newUser.Orgs = []string{org.Id}
 
-	// FIXME - Remove this later
 	if role == "admin" {
 		newUser.Role = "admin"
 		newUser.Roles = []string{"admin"}
@@ -450,6 +505,7 @@ func createNewUser(username, password, role, apikey string, org shuffle.OrgMini)
 	newUser.ActiveOrg = shuffle.OrgMini{
 		Id:   org.Id,
 		Name: org.Name,
+		Role: newUser.Role,
 	}
 
 	if len(apikey) > 0 {
@@ -510,7 +566,6 @@ func createNewUser(username, password, role, apikey string, org shuffle.OrgMini)
 			log.Printf("[INFO] Successfully updated org with user %s!", newUser.Username)
 		}
 	}
-
 
 	return nil
 }
@@ -591,7 +646,7 @@ func handleRegister(resp http.ResponseWriter, request *http.Request) {
 			} else {
 				log.Printf("[DEBUG] Successfully created the default org!")
 
-				defaultEnv := os.Getenv("ORG_ID")
+				defaultEnv := os.Getenv("ENVIRONMENT_NAME")
 				if len(defaultEnv) == 0 {
 					defaultEnv = "Shuffle"
 					log.Printf("[DEBUG] Setting default environment for org to %s", defaultEnv)
@@ -615,7 +670,7 @@ func handleRegister(resp http.ResponseWriter, request *http.Request) {
 					Name: newOrg.Name,
 				}
 
-                user.ActiveOrg = currentOrg
+				user.ActiveOrg = currentOrg
 			}
 		}
 	}
@@ -884,18 +939,130 @@ func handleInfo(resp http.ResponseWriter, request *http.Request) {
 		log.Printf("[DEBUG] Failed to get org during getinfo: %s", err)
 	}
 
+	childOrgs := []shuffle.Org{}
+	if len(org.CreatorOrg) > 0 {
+		childOrgs, err = shuffle.GetAllChildOrgs(ctx, org.CreatorOrg)
+		if err != nil {
+			log.Printf("[ERROR] Failed to get child orgs during getinfo: %s", err)
+			childOrgs = []shuffle.Org{}
+		}
+	}
+
+	failToLoadOrgs := []string{}
+	sort.Slice(childOrgs, func(i, j int) bool {
+		return childOrgs[i].Created < childOrgs[j].Created
+	})
+
+	parentOrg := &shuffle.Org{}
+	if len(org.CreatorOrg) > 0 {
+		parentOrg, err = shuffle.GetOrg(ctx, org.CreatorOrg)
+		if err != nil {
+			log.Printf("[ERROR] Failed to get parent org during getinfo: %s", err)
+			parentOrg = &shuffle.Org{}
+		}
+		licenseOrg := shuffle.HandleCheckLicense(ctx, *parentOrg)
+		parentOrg = &licenseOrg
+	}
+
+	limit := 3
+
+	if parentOrg.Licensed && parentOrg.SyncFeatures.MultiTenant.Active {
+		limit = int(parentOrg.SyncFeatures.MultiTenant.Limit)
+	}
+
+	for index, org := range childOrgs {
+
+		if index < limit {
+			continue
+		}
+
+		failToLoadOrgs = append(failToLoadOrgs, org.Id)
+	}
+
+	if len(org.CreatorOrg) > 0 && len(childOrgs) > limit && shuffle.ArrayContains(failToLoadOrgs, userInfo.ActiveOrg.Id) {
+
+		userInfo.ActiveOrg = shuffle.OrgMini{
+			Id:       parentOrg.Id,
+			Name:     parentOrg.Name,
+			Role:     userInfo.Role,
+			Branding: parentOrg.Branding,
+			Image:    parentOrg.Image,
+		}
+
+		if parentOrg.Licensed {
+			log.Printf("[INFO] Parent org %s is licensed. But Multi-tenant feature is not active. Moving user %s to parent org %s", parentOrg.Name, userInfo.Username)
+		} else {
+			log.Printf("[INFO] Parent org %s has more than 3 child orgs and is not licensed. Moving user %s to parent org %s", parentOrg.Name, userInfo.Username)
+		}
+
+		err = shuffle.SetUser(ctx, &userInfo, false)
+		if err != nil {
+			log.Printf("[WARNING] Failed setting user to parent org: %s", err)
+		}
+
+		reason := "Parent org has more than 3 child orgs and is not licensed. Moving user to parent org. Contact support@shuffler.io for more information"
+
+		if parentOrg.Licensed {
+			reason = fmt.Sprintf("Parent organization is licensed, but the maximum number of sub-organizations (%d) has been reached. You have been moved to the parent organization. Please contact support@shuffler.io for further assistance.", parentOrg.SyncFeatures.MultiTenant.Limit)
+		}
+
+		resp.WriteHeader(200)
+		resp.Write([]byte(`{"success": true, "reason": "` + reason + `", "switch_parent": true}`))
+		return
+	}
 
 	//if err == nil {
 	if len(org.Id) > 0 {
+		if userInfo.Role == "" {
+			//err = shuffle.SetUser(ctx, &userInfo, false)
+			for _, user := range org.Users {
+				if user.Id != userInfo.Id {
+					continue
+				}
+
+				userInfo.ActiveOrg.Role = user.Role
+			}
+		}
+
 		userInfo.ActiveOrg = shuffle.OrgMini{
 			Id:         org.Id,
 			Name:       org.Name,
 			CreatorOrg: org.CreatorOrg,
+			ChildOrgs:  org.ChildOrgs,
 			Role:       userInfo.ActiveOrg.Role,
 			Image:      org.Image,
 		}
+
+		if parsedAdmin == "false" {
+			// Validating admin user again just to make sure
+			// This is to avoid issues for the first org ever
+			for _, user := range org.Users {
+				if user.Id != userInfo.Id {
+					continue
+				}
+
+				if user.Role == "admin" {
+					break
+				}
+			}
+		}
 	}
-	//}
+
+	orgPriorities := org.Priorities
+	if len(org.Priorities) < 10 {
+		//log.Printf("[WARNING] Should find and add priorities as length is less than 10 for org %s", userInfo.ActiveOrg.Id)
+		newPriorities, err := shuffle.GetPriorities(ctx, userInfo, org)
+		if err != nil {
+			log.Printf("[WARNING] Failed getting new priorities for org %s: %s", org.Id, err)
+			//orgPriorities = []shuffle.Priority{}
+		} else {
+			orgPriorities = newPriorities
+
+			// A way to manage them over time
+		}
+	}
+
+	orgInterests := org.Interests
 
 	userInfo.ActiveOrg.Users = []shuffle.UserMini{}
 	userOrgs := []shuffle.OrgMini{}
@@ -936,25 +1103,17 @@ func handleInfo(resp http.ResponseWriter, request *http.Request) {
 		}
 	}
 
+	if parsedAdmin == "true" {
+		userInfo.Role = "admin"
+		userInfo.ActiveOrg.Role = "admin"
+	}
+
 	chatDisabled := false
 	if os.Getenv("SHUFFLE_CHAT_DISABLED") == "true" {
 		chatDisabled = true
 	}
 
 	userOrgs = shuffle.SortOrgList(userOrgs)
-	orgPriorities := org.Priorities
-	if len(org.Priorities) < 10 {
-		//log.Printf("[WARNING] Should find and add priorities as length is less than 10 for org %s", userInfo.ActiveOrg.Id)
-		newPriorities, err := shuffle.GetPriorities(ctx, userInfo, org)
-		if err != nil {
-			log.Printf("[WARNING] Failed getting new priorities for org %s: %s", org.Id, err)
-			//orgPriorities = []shuffle.Priority{}
-		} else {
-			orgPriorities = newPriorities
-
-			// A way to manage them over time
-		}
-	}
 
 	tutorialsFinished := []shuffle.Tutorial{}
 	for _, tutorial := range userInfo.PersonalInfo.Tutorials {
@@ -975,6 +1134,95 @@ func handleInfo(resp http.ResponseWriter, request *http.Request) {
 
 	licensed := shuffle.IsLicensed(ctx, *org)
 
+	workflowapps, err := shuffle.GetAllWorkflowApps(ctx, 1000, 0)
+	if err != nil {
+		log.Printf("{WARNING] Failed getting apps (getworkflowapps): %s", err)
+		resp.WriteHeader(401)
+		resp.Write([]byte(`{"success": false}`))
+		return
+	}
+
+	orgApps := workflowapps
+	activatedAppIds := []string{}
+	for _, app := range orgApps {
+		activatedAppIds = append(activatedAppIds, app.ID)
+	}
+
+	parsedStatus := []string{}
+	if len(org.ManagerOrgs) > 0 || userInfo.ActiveOrg.CreatorOrg != "" {
+		parsedStatus = append(parsedStatus, "sub_org")
+
+		parentOrgId := userInfo.ActiveOrg.CreatorOrg
+		if len(userInfo.ActiveOrg.CreatorOrg) == 0 {
+			parentOrgId = org.ManagerOrgs[0].Id
+		}
+
+		// Check for licensing/branding of parent and override
+		parentOrg, err := shuffle.GetOrg(ctx, parentOrgId)
+		if err == nil {
+			parent := shuffle.HandleCheckLicense(ctx, *parentOrg)
+			if parent.SyncFeatures.Branding.Active {
+				parsedStatus = append(parsedStatus, "integration_partner")
+
+				// except theme take from parent org
+				org.Branding.EnableChat = parentOrg.Branding.EnableChat
+				org.Branding.HomeUrl = parentOrg.Branding.HomeUrl
+				org.Branding.DocumentationLink = parentOrg.Defaults.DocumentationReference
+				org.Branding.SupportEmail = parentOrg.Branding.SupportEmail
+				org.Branding.LogoutUrl = parentOrg.Branding.LogoutUrl
+				org.Branding.BrandColor = parentOrg.Branding.BrandColor
+				org.Branding.BrandName = parentOrg.Branding.BrandName
+				org.Branding.GlobalUser = parentOrg.Branding.GlobalUser
+
+				if len(org.Branding.Theme) == 0 {
+					org.Branding.Theme = parentOrg.Branding.Theme
+				}
+
+				userInfo.ActiveOrg.Branding = parentOrg.Branding
+				userInfo.ActiveOrg.Image = parentOrg.Image
+				userInfo.ActiveOrg.Branding.DocumentationLink = parentOrg.Defaults.DocumentationReference
+				userInfo.ActiveOrg.Branding.BrandColor = parentOrg.Branding.BrandColor
+				userInfo.ActiveOrg.Branding.SupportEmail = org.Branding.SupportEmail
+				userInfo.ActiveOrg.Branding.LogoutUrl = org.Branding.LogoutUrl
+				userInfo.ActiveOrg.Branding.BrandName = parentOrg.Branding.BrandName
+
+				if len(org.Branding.Theme) == 0 {
+					userInfo.ActiveOrg.Branding.Theme = parentOrg.Branding.Theme
+				} else {
+					userInfo.ActiveOrg.Branding.Theme = org.Branding.Theme
+				}
+
+				// check whether current is global user or not? means is user part of parent org or not
+				for _, user := range parentOrg.Users {
+					if user.Id == userInfo.Id && user.Role == "admin" {
+						userInfo.ActiveOrg.Branding.GlobalUser = true
+						break
+					}
+				}
+			} else {
+				userInfo.ActiveOrg.Branding = shuffle.OrgBranding{}
+			}
+		}
+	} else {
+		// for parent org branding
+		licenseOrg := shuffle.HandleCheckLicense(ctx, *org)
+		org = &licenseOrg
+		if org.SyncFeatures.Branding.Active {
+			userInfo.ActiveOrg.Branding.Theme = org.Branding.Theme
+			userInfo.ActiveOrg.Branding.DocumentationLink = org.Defaults.DocumentationReference
+			userInfo.ActiveOrg.Branding.SupportEmail = org.Branding.SupportEmail
+			userInfo.ActiveOrg.Branding.LogoutUrl = org.Branding.LogoutUrl
+			userInfo.ActiveOrg.Branding.BrandColor = org.Branding.BrandColor
+			userInfo.ActiveOrg.Branding.BrandName = org.Branding.BrandName
+
+			parsedStatus = append(parsedStatus, "integration_partner")
+		} else {
+			userInfo.ActiveOrg.Branding = shuffle.OrgBranding{}
+		}
+	}
+
+	aiEnabled := os.Getenv("OPENAI_API_URL") != "" && os.Getenv("AI_MODEL") != ""
+
 	returnValue := shuffle.HandleInfo{
 		Success:   true,
 		Username:  userInfo.Username,
@@ -993,8 +1241,13 @@ func handleInfo(resp http.ResponseWriter, request *http.Request) {
 		ChatDisabled: chatDisabled,
 		Tutorials:    tutorialsFinished,
 
+		Interests:  orgInterests,
 		Priorities: orgPriorities,
-		Licensed: 		  licensed,
+		Licensed:   licensed,
+		ActiveApps: activatedAppIds,
+		Theme:      userInfo.Theme,
+		OrgStatus:  parsedStatus,
+		AIEnabled:  aiEnabled,
 	}
 
 	returnData, err := json.Marshal(returnValue)
@@ -1015,7 +1268,6 @@ type passwordReset struct {
 	Reference string `json:"reference"`
 }
 
-
 func checkAdminLogin(resp http.ResponseWriter, request *http.Request) {
 	cors := shuffle.HandleCors(resp, request)
 	if cors {
@@ -1031,7 +1283,6 @@ func checkAdminLogin(resp http.ResponseWriter, request *http.Request) {
 	}
 
 	count := len(users)
-
 	if count == 0 {
 		log.Printf("[WARNING] No users - redirecting for management user")
 		resp.WriteHeader(200)
@@ -1054,9 +1305,9 @@ func checkAdminLogin(resp http.ResponseWriter, request *http.Request) {
 		}
 
 		// No childorg setup, only parent org
-		if len(org.ManagerOrgs) > 0 || len(org.CreatorOrg) > 0 {
-			continue
-		}
+		// if len(org.ManagerOrgs) > 0 || len(org.CreatorOrg) > 0 {
+		// 	continue
+		// }
 
 		// Should run calculations
 		if len(org.SSOConfig.OpenIdAuthorization) > 0 {
@@ -1235,7 +1486,7 @@ func parseWorkflowParameters(resp http.ResponseWriter, request *http.Request) (m
 		return t, err
 	}
 
-	//fmt.Println(curjson.String())
+	//log.Println(curjson.String())
 	//log.Printf("Parsing json a second time: %s", string(curjson.String()))
 
 	err = json.Unmarshal(curjson.Bytes(), &t)
@@ -1756,6 +2007,8 @@ func handleWebhookCallback(resp http.ResponseWriter, request *http.Request) {
 	//	return
 	//}
 
+	log.Printf("[DEBUG] HOOKS: webhook callback: %s", request.URL.String())
+
 	if request.Method != "POST" {
 		request.Method = "POST"
 	}
@@ -1767,6 +2020,7 @@ func handleWebhookCallback(resp http.ResponseWriter, request *http.Request) {
 
 	path := strings.Split(request.URL.String(), "/")
 	if len(path) < 4 {
+		log.Printf("[DEBUG] HOOKS: Invalid webhook path: %s", request.URL.String())
 		resp.WriteHeader(403)
 		resp.Write([]byte(`{"success": false}`))
 		return
@@ -1782,7 +2036,7 @@ func handleWebhookCallback(resp http.ResponseWriter, request *http.Request) {
 	if location[1] == "api" {
 		if len(location) <= 4 {
 			log.Printf("[INFO] Couldn't handle location. Too short in webhook: %d", len(location))
-			resp.WriteHeader(401)
+			resp.WriteHeader(400)
 			resp.Write([]byte(`{"success": false}`))
 			return
 		}
@@ -1798,6 +2052,8 @@ func handleWebhookCallback(resp http.ResponseWriter, request *http.Request) {
 			queries = splitter[1]
 		}
 	}
+
+	log.Printf("[DEBUG] HOOKS: Pre user agent check")
 
 	// Find user agent header
 	userAgent := request.Header.Get("User-Agent")
@@ -1821,8 +2077,8 @@ func handleWebhookCallback(resp http.ResponseWriter, request *http.Request) {
 	//log.Printf("HookID: %s", hookId)
 	hook, err := shuffle.GetHook(ctx, hookId)
 	if err != nil {
-		log.Printf("[WARNING] Failed getting hook %s (callback): %s", hookId, err)
-		resp.WriteHeader(401)
+		log.Printf("[WARNING] HOOKS: Failed getting hook %s (callback): %s", hookId, err)
+		resp.WriteHeader(400)
 		resp.Write([]byte(`{"success": false}`))
 		return
 	}
@@ -1834,21 +2090,21 @@ func handleWebhookCallback(resp http.ResponseWriter, request *http.Request) {
 	//resp.WriteHeader(200)
 	//resp.Write([]byte(`{"success": true}`))
 	if hook.Status == "stopped" {
-		log.Printf("[WARNING] Not running %s because hook status is stopped", hook.Id)
-		resp.WriteHeader(401)
+		log.Printf("[WARNING] HOOKS: Not running %s because hook status is stopped", hook.Id)
+		resp.WriteHeader(400)
 		resp.Write([]byte(fmt.Sprintf(`{"success": false, "reason": "The webhook isn't running. Is it running?"}`)))
 		return
 	}
 
 	if len(hook.Workflows) == 0 {
-		log.Printf("[DEBUG] Not running because hook isn't connected to any workflows")
-		resp.WriteHeader(401)
+		log.Printf("[DEBUG] HOOKS: Not running because hook isn't connected to any workflows")
+		resp.WriteHeader(400)
 		resp.Write([]byte(fmt.Sprintf(`{"success": false, "reason": "No workflows are defined"}`)))
 		return
 	}
 
 	if hook.Environment == "cloud" {
-		log.Printf("[DEBUG] This should trigger in the cloud. Duplicate action allowed onprem.")
+		log.Printf("[DEBUG] HOOKS: This should trigger in the cloud. Duplicate action allowed onprem.")
 	}
 
 	// Check auth
@@ -1864,7 +2120,7 @@ func handleWebhookCallback(resp http.ResponseWriter, request *http.Request) {
 
 	body, err := ioutil.ReadAll(request.Body)
 	if err != nil {
-		log.Printf("[DEBUG] Body data error: %s", err)
+		log.Printf("[DEBUG] HOOKS: data read error: %s", err)
 		resp.WriteHeader(401)
 		resp.Write([]byte(`{"success": false}`))
 		return
@@ -1889,7 +2145,7 @@ func handleWebhookCallback(resp http.ResponseWriter, request *http.Request) {
 	}
 
 	if len(hook.Workflows) == 1 {
-		workflow, err := shuffle.GetWorkflow(ctx, hook.Workflows[0])
+		workflow, err := shuffle.GetWorkflow(ctx, hook.Workflows[0], true)
 		if err == nil {
 			for _, branch := range workflow.Branches {
 				if branch.SourceID == hook.Id {
@@ -1905,7 +2161,7 @@ func handleWebhookCallback(resp http.ResponseWriter, request *http.Request) {
 
 	b, err := json.Marshal(newBody)
 	if err != nil {
-		log.Printf("[ERROR] Failed newBody marshaling for webhook: %s", err)
+		log.Printf("[ERROR] HOOKS: Failed newBody marshaling for webhook: %s", err)
 		resp.WriteHeader(500)
 		resp.Write([]byte(`{"success": false}`))
 		return
@@ -1921,7 +2177,7 @@ func handleWebhookCallback(resp http.ResponseWriter, request *http.Request) {
 		}
 
 		if len(hook.Start) == 0 {
-			log.Printf("[WARNING] No start node for hook %s - running with workflow default.", hook.Id)
+			log.Printf("[ERROR] HOOKS: No start node for hook %s - running with workflow default.", hook.Id)
 			//bodyWrapper = string(parsedBody)
 		}
 
@@ -1933,7 +2189,6 @@ func handleWebhookCallback(resp http.ResponseWriter, request *http.Request) {
 
 		// OrgId: activeOrgs[0].Id,
 		workflowExecution, executionResp, err := handleExecution(item, workflow, newRequest, hook.OrgId)
-
 		if err == nil {
 			if hook.Version == "v2" {
 				timeout := 15
@@ -1968,6 +2223,7 @@ func handleWebhookCallback(resp http.ResponseWriter, request *http.Request) {
 			} else {
 				resp.Write([]byte(fmt.Sprintf(`{"success": true, "execution_id": "%s"}`, workflowExecution.ExecutionId)))
 			}
+
 			return
 		}
 
@@ -1975,10 +2231,13 @@ func handleWebhookCallback(resp http.ResponseWriter, request *http.Request) {
 		resp.Write([]byte(fmt.Sprintf(`{"success": false, "reason": "%s"}`, executionResp)))
 	}
 
+	log.Printf("[ERROR] HOOKS: END OF FUNCTION FOR '%s'. IF this is reached, something went wrong.", hook.Id)
+	resp.WriteHeader(500)
+	resp.Write([]byte(`{"success": false, "reason": "Failed to run workflow. Check logs."}`))
+
 }
 
 func handlePipelineCallback(resp http.ResponseWriter, request *http.Request) {
-
 	if request.Method != "POST" {
 		request.Method = "POST"
 	}
@@ -1999,7 +2258,7 @@ func handlePipelineCallback(resp http.ResponseWriter, request *http.Request) {
 	location := strings.Split(request.URL.String(), "/")
 
 	var pipelineId string
-	
+
 	if location[1] == "api" {
 		if len(location) <= 4 {
 			log.Printf("[INFO] Couldn't handle location. Too short in pipeline: %d", len(location))
@@ -2013,7 +2272,7 @@ func handlePipelineCallback(resp http.ResponseWriter, request *http.Request) {
 
 	userAgent := request.Header.Get("User-Agent")
 	if strings.Contains(strings.ToLower(userAgent), "microsoftpreview") || strings.Contains(strings.ToLower(userAgent), "googlebot") {
-		log.Printf("[AUDIT] Blocking googlebot and microsoftbot for pielines. UA: '%s'", userAgent)
+		log.Printf("[AUDIT] Blocking googlebot and microsoftbot for pipelines. UA: '%s'", userAgent)
 		resp.WriteHeader(400)
 		resp.Write([]byte(`{"success": false, "reason": "Google/Microsoft preview bots not allowed. Please change the useragent."}`))
 		return
@@ -2058,11 +2317,27 @@ func handlePipelineCallback(resp http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	parsedBody := shuffle.GetExecutionbody(body)
+	// Parse concatenated JSON logs
+	jsonList, err := parseConcatenatedJSONLogs(string(body))
+	if err != nil {
+		log.Printf("[DEBUG] JSON parsing error: %s", err)
+		resp.WriteHeader(401)
+		resp.Write([]byte(`{"success": false}`))
+		return
+	}
+
+	parsedBody, err := json.Marshal(jsonList)
+	if err != nil {
+		log.Printf("[ERROR] Failed to marshal jsonList: %s", err)
+		resp.WriteHeader(500)
+		resp.Write([]byte(`{"success": false}`))
+		return
+	}
+
 	newBody := shuffle.ExecutionStruct{
 		Start:             pipeline.StartNode,
 		ExecutionSource:   "pipeline",
-		ExecutionArgument: parsedBody,
+		ExecutionArgument: string(parsedBody),
 	}
 
 	workflow, err := shuffle.GetWorkflow(ctx, pipeline.WorkflowId)
@@ -2093,8 +2368,7 @@ func handlePipelineCallback(resp http.ResponseWriter, request *http.Request) {
 	}
 
 	if len(pipeline.StartNode) == 0 {
-		log.Printf("[WARNING] No start node for pipeline %s - running with workflow default.", pipeline.TriggerId)
-
+		log.Printf("[WARNING] No start node for pipeline %s - running with workflow default.")
 	}
 
 	newRequest := &http.Request{
@@ -2108,11 +2382,50 @@ func handlePipelineCallback(resp http.ResponseWriter, request *http.Request) {
 	if err == nil {
 		resp.WriteHeader(200)
 		resp.Write([]byte(fmt.Sprintf(`{"success": true, "execution_id": "%s"}`, workflowExecution.ExecutionId)))
+
+		// Track Sigma rules
+		trackSigmaRules(ctx, pipeline.OrgId, jsonList)
 		return
 	}
 
 	resp.WriteHeader(500)
 	resp.Write([]byte(fmt.Sprintf(`{"success": false, "reason": "%s"}`, executionResp)))
+}
+
+func parseConcatenatedJSONLogs(logs string) ([]map[string]interface{}, error) {
+	var jsonList []map[string]interface{}
+	decoder := json.NewDecoder(strings.NewReader(logs))
+
+	for decoder.More() {
+		var jsonObject map[string]interface{}
+		if err := decoder.Decode(&jsonObject); err != nil {
+			log.Printf("[WARNING] JSON decoding error: %s. Skipping this object.", err)
+			continue
+		}
+		jsonList = append(jsonList, jsonObject)
+	}
+
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return nil, fmt.Errorf("error after decoding all JSON objects: %v", err)
+	}
+
+	return jsonList, nil
+}
+
+func trackSigmaRules(ctx context.Context, orgId string, jsonList []map[string]interface{}) {
+	ruleCount := make(map[string]int)
+	for _, logEntry := range jsonList {
+		if rule, ok := logEntry["rule"].(map[string]interface{}); ok {
+			if ruleName, ok := rule["title"].(string); ok {
+				ruleCount[ruleName]++
+			}
+		}
+	}
+
+	for ruleName, count := range ruleCount {
+		shuffle.IncrementCache(ctx, orgId, ruleName, count)
+		log.Printf("[INFO] Rule %s incremented by %d", ruleName, count)
+	}
 }
 
 func executeCloudAction(action shuffle.CloudSyncJob, apikey string) error {
@@ -2327,7 +2640,7 @@ func execSubprocess(cmdName string, cmdArgs []string) error {
 	scanner := bufio.NewScanner(cmdReader)
 	go func() {
 		for scanner.Scan() {
-			fmt.Printf("Out: %s\n", scanner.Text())
+			log.Printf("Out: %s\n", scanner.Text())
 		}
 	}()
 
@@ -2938,8 +3251,9 @@ func buildSwaggerApp(resp http.ResponseWriter, body []byte, user shuffle.User, s
 			return
 		}
 
-		// FIXME: Check whether it's in use.
-		if user.Id != app.Owner && user.Role != "admin" {
+		if user.Id == app.Owner || (user.Role == "admin" && user.ActiveOrg.Id == app.ReferenceOrg) || shuffle.ArrayContains(app.Contributors, user.Id) {
+			log.Printf("[DEBUG] Editing app %s with user %s (%s) in org %s", test.Id, user.Username, user.Id, user.ActiveOrg.Id)
+		} else {
 			log.Printf("[WARNING] Wrong user (%s) for app %s when verifying swagger", user.Username, app.Name)
 			resp.WriteHeader(403)
 			resp.Write([]byte(`{"success": false, "reason": "You don't have permissions to edit this app. Contact support@shuffler.io if this persists."}`))
@@ -3013,7 +3327,18 @@ func buildSwaggerApp(resp http.ResponseWriter, body []byte, user shuffle.User, s
 		}
 	}
 
-	api.Owner = user.Id
+	if api.Owner == "" {
+		api.Owner = user.Id
+	}
+
+	if len(api.ReferenceOrg) == 0 {
+		api.ReferenceOrg = user.ActiveOrg.Id
+	}
+
+	if len(test.Image) > 0 {
+		api.SmallImage = test.Image
+		api.LargeImage = test.Image
+	}
 
 	err = shuffle.DumpApi(basePath, api)
 	if err != nil {
@@ -3049,7 +3374,7 @@ func buildSwaggerApp(resp http.ResponseWriter, body []byte, user shuffle.User, s
 	err = shuffle.DeployAppToDatastore(ctx, api)
 	//func DeployAppToDatastore(ctx context.Context, workflowapp WorkflowApp, bucketName string) error {
 	if err != nil {
-		log.Printf("Failed adding app to db: %s", err)
+		log.Printf("[ERROR] Failed adding app to db: %s", err)
 		resp.WriteHeader(500)
 		resp.Write([]byte(fmt.Sprintf(`{"success": false, "reason": "Failed adding app to db: %s"}`, err)))
 		return
@@ -3058,7 +3383,7 @@ func buildSwaggerApp(resp http.ResponseWriter, body []byte, user shuffle.User, s
 	// 2. Get all the required code
 	appbase, staticBaseline, err := shuffle.GetAppbase()
 	if err != nil {
-		log.Printf("Failed getting appbase: %s", err)
+		log.Printf("[ERROR] Failed getting appbase: %s", err)
 		resp.WriteHeader(500)
 		resp.Write([]byte(`{"success": false, "reason": "Failed getting appbase code"}`))
 		return
@@ -3084,6 +3409,40 @@ func buildSwaggerApp(resp http.ResponseWriter, body []byte, user shuffle.User, s
 	}
 
 	log.Printf("[INFO] Successfully stitched ZIPFILE for %s", identifier)
+
+	// Copy baseline Dockerfile to build directory
+	dockerfileSource := "../app_gen/python-lib/baseline/Dockerfile"
+	dockerfileDestination := fmt.Sprintf("%s/Dockerfile", basePath)
+
+	// Read and copy the baseline Dockerfile
+	dockerfileContent, err := ioutil.ReadFile(dockerfileSource)
+	if err != nil {
+		foundDockerfile := shuffle.GetBaseDockerfile()
+		if len(foundDockerfile) > 0 {
+			dockerfileContent = foundDockerfile
+		} else {
+			log.Printf("[ERROR] Failed to read baseline Dockerfile: %s", err)
+			resp.WriteHeader(500)
+			resp.Write([]byte(`{"success": false, "reason": "Failed to read baseline Dockerfile"}`))
+			return
+		}
+	}
+
+	err = ioutil.WriteFile(dockerfileDestination, dockerfileContent, 0644)
+	if err != nil {
+		log.Printf("[ERROR] Failed to copy Dockerfile to build directory: %s", err)
+		resp.WriteHeader(500)
+		resp.Write([]byte(`{"success": false, "reason": "Failed to copy Dockerfile"}`))
+		return
+	}
+
+	// Verify the Dockerfile was created
+	if _, err := os.Stat(dockerfileDestination); os.IsNotExist(err) {
+		log.Printf("[ERROR] Dockerfile does not exist at destination: %s", dockerfileDestination)
+		resp.WriteHeader(500)
+		resp.Write([]byte(`{"success": false, "reason": "Dockerfile was not created properly"}`))
+		return
+	}
 
 	// 4. Build the image locally.
 	// FIXME: Should be moved to a local docker registry
@@ -3126,9 +3485,9 @@ func buildSwaggerApp(resp http.ResponseWriter, body []byte, user shuffle.User, s
 		err = shuffle.SetUser(ctx, &user, true)
 		if err != nil {
 			log.Printf("[ERROR] Failed adding verification for user %s: %s", user.Username, err)
-			resp.WriteHeader(500)
-			resp.Write([]byte(fmt.Sprintf(`{"success": true, "reason": "Failed updating user"}`)))
-			return
+			//resp.WriteHeader(500)
+			//resp.Write([]byte(fmt.Sprintf(`{"success": true, "reason": "Failed updating user"}`)))
+			//return
 		}
 	}
 
@@ -3137,6 +3496,12 @@ func buildSwaggerApp(resp http.ResponseWriter, body []byte, user shuffle.User, s
 		ID:   newmd5,
 		Body: string(body),
 	}
+
+	if !shuffle.ArrayContains(api.Contributors, user.Id) {
+		api.Contributors = append(api.Contributors, user.Id)
+	}
+
+	shuffle.SetAppRevision(ctx, api)
 
 	log.Printf("[INFO] API LENGTH FOR %s: %d, ID: %s", api.Name, len(parsed.Body), newmd5)
 	// FIXME: Might cause versioning issues if we re-use the same!!
@@ -3208,11 +3573,25 @@ func buildSwaggerApp(resp http.ResponseWriter, body []byte, user shuffle.User, s
 		}
 	}
 
-
 	log.Printf("[DEBUG] Successfully built app %s (%s)", api.Name, api.ID)
 	if len(user.Id) > 0 {
 		resp.WriteHeader(200)
 		resp.Write([]byte(fmt.Sprintf(`{"success": true, "id": "%s"}`, api.ID)))
+	}
+
+	org, err := shuffle.GetOrg(ctx, user.ActiveOrg.Id)
+	if err != nil {
+		log.Printf("[ERROR] Failed getting org during image build (%s): %s", user.ActiveOrg.Id, err)
+	} else {
+		imagenames := []string{
+			fmt.Sprintf("%s_%s", api.Name, api.AppVersion),
+			fmt.Sprintf("%s_%s", api.Name, api.ID),
+		}
+
+		err = shuffle.DistributeAppToEnvironments(ctx, *org, imagenames)
+		if err != nil {
+			log.Printf("[ERROR] Failed distributing app to environments: %s", err)
+		}
 	}
 }
 
@@ -3249,8 +3628,6 @@ func verifySwagger(resp http.ResponseWriter, request *http.Request) {
 	buildSwaggerApp(resp, body, user, false)
 }
 
-
-
 // Hotloads new apps from a folder
 func handleAppHotload(ctx context.Context, location string, forceUpdate bool) error {
 
@@ -3269,7 +3646,7 @@ func handleAppHotload(ctx context.Context, location string, forceUpdate bool) er
 		return err
 	}
 
-	_, _, err = IterateAppGithubFolders(ctx, fs, dir, "", "", forceUpdate)
+	_, _, err = IterateAppGithubFolders(ctx, fs, dir, "", "", forceUpdate, false)
 	if err != nil {
 		log.Printf("[WARNING] Githubfolders error: %s", err)
 		return err
@@ -3369,7 +3746,12 @@ func handleCloudJob(job shuffle.CloudSyncJob) error {
 				return err
 			}
 
-			redirectDomain := "localhost:5001"
+			backendPort := os.Getenv("BACKEND_PORT")
+			if backendPort == "" {
+				backendPort = "5001"
+			}
+
+			redirectDomain := fmt.Sprintf("localhost:%s", backendPort)
 			redirectUrl := fmt.Sprintf("http://%s/api/v1/triggers/outlook/register", redirectDomain)
 			outlookClient, _, err := shuffle.GetOutlookClient(ctx, "", hook.OauthToken, redirectUrl)
 			if err != nil {
@@ -3518,9 +3900,12 @@ func handleCloudJob(job shuffle.CloudSyncJob) error {
 // Handles jobs from remote (cloud)
 func remoteOrgJobController(org shuffle.Org, body []byte) error {
 	type retStruct struct {
-		Success bool                   `json:"success"`
-		Reason  string                 `json:"reason"`
-		Jobs    []shuffle.CloudSyncJob `json:"jobs"`
+		Success       bool                          `json:"success"`
+		Reason        string                        `json:"reason"`
+		Jobs          []shuffle.CloudSyncJob        `json:"jobs"`
+		SyncFeatures  shuffle.SyncFeatures          `json:"sync_features"`
+		Subscriptions []shuffle.PaymentSubscription `json:"subscriptions"`
+		Licensed      bool                          `json:"licensed"`
 	}
 
 	responseData := retStruct{}
@@ -3587,6 +3972,31 @@ func remoteOrgJobController(org shuffle.Org, body []byte) error {
 		log.Printf("Got job with reason %s and %d job(s)", responseData.Reason, len(responseData.Jobs))
 	}
 
+	cacheKey := fmt.Sprintf("org_sync_features_%s", org.Id)
+	featuresBytes, err := json.Marshal(responseData.SyncFeatures)
+	if err != nil {
+		log.Printf("[ERROR] Failed to marshal SyncFeatures for cache: %s", err)
+	} else {
+		shuffle.SetCache(ctx, cacheKey, featuresBytes, 1800)
+	}
+
+	subscriptionCacheKey := fmt.Sprintf("org_subscriptions_%s", org.Id)
+	subscriptionsBytes, err := json.Marshal(responseData.Subscriptions)
+	if err != nil {
+		log.Printf("[ERROR] Failed to marshal Subscriptions for cache: %s", err)
+	} else {
+		shuffle.SetCache(ctx, subscriptionCacheKey, subscriptionsBytes, 1800)
+	}
+
+	licenseCacheKey := fmt.Sprintf("org_licensed_%s", org.Id)
+	licensedBytes, err := json.Marshal(responseData.Licensed)
+	if err != nil {
+		log.Printf("[ERROR] Failed to marshal Licensed for cache: %s", err)
+	} else {
+
+		shuffle.SetCache(ctx, licenseCacheKey, licensedBytes, 1800)
+	}
+
 	for _, job := range responseData.Jobs {
 		err = handleCloudJob(job)
 		if err != nil {
@@ -3597,11 +4007,10 @@ func remoteOrgJobController(org shuffle.Org, body []byte) error {
 	return nil
 }
 
-
 func remoteOrgJobHandler(org shuffle.Org, interval int) error {
 
 	// Check if it's 1 in 10 (10% chance random)
-	backupJob := shuffle.BackupJob{} 
+	backupJob := shuffle.BackupJob{}
 
 	// Check if workflow backup is active
 	// Check if app backup is active
@@ -3615,30 +4024,57 @@ func remoteOrgJobHandler(org shuffle.Org, interval int) error {
 		}
 	}
 
-	if org.SyncConfig.WorkflowBackup {
-		workflows, err := shuffle.GetAllWorkflowsByQuery(ctx, foundUser, 250, "")
-		if err != nil {
-			log.Printf("[ERROR] Failed getting backup workflows for org %s: %s", org.Id, err)
-		} else {
-			backupJob.Workflows = workflows
-		}
+	// Check if it's 1/20 times (600 seconds - 10 min on average)
+	// Only problem: May take time to sync the first time, which is annoying
+	// This is to ensure that we don't spam the shuffle cloud servers with a lot of data
+	shouldBackupData := false
+	randomNumber := rand.Intn(20)
+	if randomNumber == 0 {
+		shouldBackupData = true
 	}
 
-	if org.SyncConfig.AppBackup && len(org.Users) > 0 {
-
-		apps, err := shuffle.GetPrioritizedApps(ctx, foundUser)
-		if err != nil {
-			log.Printf("[ERROR] Failed getting backup apps for org %s: %s", org.Id, err)
-		} else {
-			backupJob.Apps = apps
+	// Just to prevent it from spamming large outbound requests
+	if shouldBackupData {
+		if org.SyncConfig.WorkflowBackup {
+			workflows, err := shuffle.GetAllWorkflowsByQuery(ctx, foundUser, 250, "")
+			if err != nil {
+				log.Printf("[ERROR] Failed getting backup workflows for org %s: %s", org.Id, err)
+			} else {
+				backupJob.Workflows = workflows
+			}
 		}
-	}
 
-	info, err := shuffle.GetOrgStatistics(ctx, org.Id)
-	if err != nil {
-		log.Printf("[ERROR] Failed getting org statistics backup for org %s: %s", org.Id, err)
-	} else {
-		backupJob.Stats = *info
+		if org.SyncConfig.AppBackup && len(org.Users) > 0 {
+			foundUser.ActiveOrg.Id = org.Id
+			apps, err := shuffle.GetPrioritizedApps(ctx, foundUser)
+			if err != nil {
+				log.Printf("[ERROR] Failed getting backup apps for org %s: %s", org.Id, err)
+			} else {
+				parsedApps := []shuffle.WorkflowApp{}
+				for _, app := range apps {
+					if len(app.Actions) == 0 {
+						continue
+					}
+
+					if !app.Generated {
+						continue
+					}
+
+					parsedApps = append(parsedApps, app)
+				}
+
+				backupJob.Apps = parsedApps
+			}
+		}
+
+		// Send stats once every 10 times or so..?
+		// For now, just send every time
+		info, err := shuffle.GetOrgStatistics(ctx, org.Id)
+		if err != nil {
+			log.Printf("[ERROR] Failed getting org statistics backup for org %s: %s", org.Id, err)
+		} else {
+			backupJob.Stats = *info
+		}
 	}
 
 	backupJobData, err := json.Marshal(backupJob)
@@ -3646,7 +4082,6 @@ func remoteOrgJobHandler(org shuffle.Org, interval int) error {
 		log.Printf("[ERROR] Failed marshalling backup job: %s", err)
 		backupJobData = []byte{}
 	}
-
 
 	syncUrl := fmt.Sprintf("%s/api/v1/cloud/sync", syncUrl)
 	client := shuffle.GetExternalClient(syncUrl)
@@ -3676,6 +4111,7 @@ func remoteOrgJobHandler(org shuffle.Org, interval int) error {
 		//log.Printf("[ERROR] Failed cloud sync job controller run for '%s': %s", respBody, err)
 		return err
 	}
+
 	return nil
 }
 
@@ -3691,7 +4127,7 @@ func runInitCloudSetup() {
 	if err != nil {
 		log.Printf("[INFO] Failed initial setup: %s", err)
 	} else {
-		log.Printf("[INFO] Ran initial setup!")
+		log.Printf("[INFO] Finished initial cloudsync setup!")
 	}
 }
 
@@ -3707,7 +4143,7 @@ func runInitEs(ctx context.Context) {
 		log.Printf("[INFO] Running with HTTPS proxy %s (env: HTTPS_PROXY)", httpsProxy)
 	}
 
-	defaultEnv := os.Getenv("ORG_ID")
+	defaultEnv := os.Getenv("ENVIRONMENT_NAME")
 	if len(defaultEnv) == 0 {
 		defaultEnv = "Shuffle"
 		log.Printf("[DEBUG] Setting default environment for org to %s", defaultEnv)
@@ -3808,11 +4244,12 @@ func runInitEs(ctx context.Context) {
 		}
 	}
 
-	if strings.Contains(os.Getenv("SHUFFLE_OPENSEARCH_URL"), "https") {
-		log.Printf("[INFO] Waiting during init to make sure the opensearch instance is up and running with security features properly")
-		time.Sleep(30 * time.Second)
-	}
+	log.Printf("[INFO] Waiting 30 seconds during init to make sure the opensearch instance is up and running with security features enabled")
+	time.Sleep(30 * time.Second)
 
+	shuffle.InitOpensearchIndexes()
+
+	// FIXME: This should ONLY run on one backend instance. This may cause interference.
 	schedules, err := shuffle.GetAllSchedules(ctx, "ALL")
 	if err != nil {
 		log.Printf("[WARNING] Failed getting schedules during service init: %s", err)
@@ -3853,19 +4290,28 @@ func runInitEs(ctx context.Context) {
 			}
 
 			// FIXME: Add a randomized timer to avoid all schedules running at the same time
-			// Many are at 5 minutes / 1 hour. The point is to spread these out 
+			// Many are at 5 minutes / 1 hour. The point is to spread these out
 			// a bit instead of all of them starting at the exact same time
 
 			//log.Printf("Schedule: %#v", schedule)
 			//log.Printf("Schedule time: every %d seconds", schedule.Seconds)
-			jobret, err := newscheduler.Every(schedule.Seconds).Seconds().NotImmediately().Run(job(schedule))
-			if err != nil {
-				log.Printf("[ERROR] Failed to start schedule for workflow %s: %s", schedule.WorkflowId, err)
+			if schedule.Seconds == 0 && len(schedule.Frequency) > 0 {
+				cronJob, err := CronScheduler.Cron(schedule.Frequency).Do(job(schedule))
+				if err != nil {
+					log.Printf("[ERROR] Failed to start schedule for workflow %s: %s", schedule.WorkflowId, err)
+				} else {
+					log.Printf("[DEBUG] Successfully started schedule for workflow %s", schedule.WorkflowId)
+				}
+				cronJobs[schedule.Id] = cronJob
 			} else {
-				log.Printf("[DEBUG] Successfully started schedule for workflow %s", schedule.WorkflowId)
+				jobret, err := newscheduler.Every(schedule.Seconds).Seconds().NotImmediately().Run(job(schedule))
+				if err != nil {
+					log.Printf("[ERROR] Failed to start schedule for workflow %s: %s", schedule.WorkflowId, err)
+				} else {
+					log.Printf("[DEBUG] Successfully started schedule for workflow %s", schedule.WorkflowId)
+				}
+				scheduledJobs[schedule.Id] = jobret
 			}
-
-			scheduledJobs[schedule.Id] = jobret
 		}
 	}
 
@@ -3888,22 +4334,32 @@ func runInitEs(ctx context.Context) {
 			log.Printf("[DEBUG] Creating org for default user %s", username)
 			orgId := uuid.NewV4().String()
 			orgSetupName := "default"
+			tmpOrg := shuffle.OrgMini{
+				Name: orgSetupName,
+				Id:   orgId,
+			}
+			err = createNewUser(username, password, "admin", apikey, tmpOrg)
+			if err != nil {
+				log.Printf("[ERROR] Failed to create default user %s: %s", username, err)
+			} else {
+				log.Printf("[INFO] Successfully created user %s", username)
+			}
+
+			user, err := shuffle.GetUser(ctx, username)
 			newOrg := shuffle.Org{
 				Name:      orgSetupName,
 				Id:        orgId,
 				Org:       orgSetupName,
-				Users:     []shuffle.User{},
+				Users:     []shuffle.User{*user},
 				Roles:     []string{"admin", "user"},
 				CloudSync: false,
 			}
 
 			err = shuffle.SetOrg(ctx, newOrg, newOrg.Id)
-			setUsers := false
 			if err != nil {
-				log.Printf("[WARNING] Failed setting organization when creating original user: %s", err)
+				log.Printf("[ERROR] Failed setting organization when creating original user: %s", err)
 			} else {
 				log.Printf("[DEBUG] Successfully created the default org with id %s!", orgId)
-				setUsers = true
 
 				item := shuffle.Environment{
 					Name:    defaultEnv,
@@ -3916,20 +4372,6 @@ func runInitEs(ctx context.Context) {
 				err = shuffle.SetEnvironment(ctx, &item)
 				if err != nil {
 					log.Printf("[WARNING] Failed setting up new environment")
-				}
-			}
-
-			if setUsers {
-				tmpOrg := shuffle.OrgMini{
-					Name: orgSetupName,
-					Id:   orgId,
-				}
-
-				err = createNewUser(username, password, "admin", apikey, tmpOrg)
-				if err != nil {
-					log.Printf("[INFO] Failed to create default user %s: %s", username, err)
-				} else {
-					log.Printf("[INFO] Successfully created user %s", username)
 				}
 			}
 		}
@@ -3960,7 +4402,7 @@ func runInitEs(ctx context.Context) {
 		}
 
 		//interval := int(org.SyncConfig.Interval)
-		interval := 15
+		interval := 30
 		if interval == 0 {
 			log.Printf("[WARNING] Skipping org %s because sync isn't set (0).", org.Id)
 			continue
@@ -4029,20 +4471,26 @@ func runInitEs(ctx context.Context) {
 
 		cleanupJob := func() func() {
 			return func() {
-				log.Printf("[INFO] Running schedule for cleaning up or re-running unfinished workflows in %d environments.", len(environments))
+				//log.Printf("[INFO] Running schedule for cleaning up or re-running unfinished workflows in %d environments.", len(environments))
+
+				backendPort := os.Getenv("BACKEND_PORT")
+				if backendPort == "" {
+					backendPort = "5001"
+				}
 
 				for _, environment := range environments {
 					// Allowed without PROXY management as it's localhost
 					// client := shuffle.GetExternalClient(syncUrl)
 
 					httpClient := &http.Client{}
-					url := fmt.Sprintf("http://localhost:5001/api/v1/environments/%s/stop", environment)
+					url := fmt.Sprintf("http://localhost:%s/api/v1/environments/%s/stop", backendPort, environment)
 					req, err := http.NewRequest(
 						"GET",
 						url,
 						nil,
 					)
 
+					// FIXME: This will stop working of the user rotates their key lol
 					req.Header.Add("Authorization", fmt.Sprintf(`Bearer %s`, parsedApikey))
 					if err != nil {
 						log.Printf("[ERROR] Failed CREATING environment request for %s: %s", environment, err)
@@ -4058,12 +4506,19 @@ func runInitEs(ctx context.Context) {
 
 					respBody, err := ioutil.ReadAll(newresp.Body)
 					if err != nil {
-						log.Printf("[ERROR] Failed setting respbody %s", err)
+						log.Printf("[ERROR] Failed setting respbody %s for execution stop. Status: %d", err, newresp.StatusCode)
 						continue
 					}
-					log.Printf("[DEBUG] Successfully ran workflow cleanup request for %s. Body: %s", environment, string(respBody))
 
-					url = fmt.Sprintf("http://localhost:5001/api/v1/environments/%s/rerun", environment)
+					if newresp.StatusCode != 200 {
+						if !strings.Contains(string(respBody), "is active") {
+							log.Printf("[WARNING] Failed stopping runs in environment %s. Status code: %d. Body: %s", environment, newresp.StatusCode, string(respBody))
+						}
+
+						continue
+					}
+
+					url = fmt.Sprintf("http://localhost:%s/api/v1/environments/%s/rerun", backendPort, environment)
 					req, err = http.NewRequest(
 						"GET",
 						url,
@@ -4083,12 +4538,17 @@ func runInitEs(ctx context.Context) {
 						continue
 					}
 
-					respBody, err = ioutil.ReadAll(newresp.Body)
-					if err != nil {
-						log.Printf("[ERROR] Failed setting respbody %s", err)
-						continue
+					if newresp.StatusCode != 200 {
+						log.Printf("[WARNING] Failed rerunning environment %s. Status code: %d", environment, newresp.StatusCode)
 					}
-					log.Printf("[DEBUG] Successfully ran workflow RERUN request for %s. Body: %s", environment, string(respBody))
+
+					//respBody, err := ioutil.ReadAll(newresp.Body)
+					//if err != nil {
+					//	log.Printf("[ERROR] Failed setting respbody %s", err)
+					//	continue
+					//}
+
+					//log.Printf("[DEBUG] Ran workflow RERUN request for %s with the response. Body: %s", environment, string(respBody))
 				}
 			}
 		}
@@ -4102,20 +4562,8 @@ func runInitEs(ctx context.Context) {
 	}
 
 	// Getting apps to see if we should initialize a test
-	// FIXME: Isn't this a little backwards?
 	workflowapps, err := shuffle.GetAllWorkflowApps(ctx, 1000, 0)
 	log.Printf("[INFO] Getting and validating workflowapps. Got %d with err %#v", len(workflowapps), err)
-
-	// accept any certificate (might be useful for testing)
-	//customGitClient := &http.Client{
-	//	Transport: &http.Transport{
-	//		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	//	},
-	//	Timeout: 15 * time.Second,
-	//}
-	//client.InstallProtocol("http", githttp.NewClient(customGitClient))
-	//client.InstallProtocol("https", githttp.NewClient(customGitClient))
-
 	if err != nil && len(workflowapps) == 0 {
 		log.Printf("[WARNING] Failed getting apps (runInit): %s", err)
 	} else if err == nil && len(workflowapps) < 10 {
@@ -4125,8 +4573,9 @@ func runInitEs(ctx context.Context) {
 
 		url := os.Getenv("SHUFFLE_APP_DOWNLOAD_LOCATION")
 		if len(url) == 0 {
-			log.Printf("[INFO] Skipping download of apps since no URL is set. Default would be https://github.com/shuffle/shuffle-apps")
-			url = "https://github.com/shuffle/shuffle-apps"
+			log.Printf("[INFO] Skipping download of apps since no URL is set. Default would be https://github.com/shuffle/python-apps")
+
+			url = "https://github.com/shuffle/python-apps"
 			//url = ""
 			//return
 		}
@@ -4144,6 +4593,8 @@ func runInitEs(ctx context.Context) {
 				Password: password,
 			}
 		}
+
+		cloneOptions = checkGitProxy(cloneOptions)
 
 		branch := os.Getenv("SHUFFLE_DOWNLOAD_AUTH_BRANCH")
 		if len(branch) > 0 && branch != "master" && branch != "main" {
@@ -4164,7 +4615,7 @@ func runInitEs(ctx context.Context) {
 		_ = r
 		//iterateAppGithubFolders(fs, dir, "", "testing")
 
-		_, _, err = IterateAppGithubFolders(ctx, fs, dir, "", "", forceUpdate)
+		_, _, err = IterateAppGithubFolders(ctx, fs, dir, "", "", forceUpdate, true)
 		if err != nil {
 			log.Printf("[WARNING] Error from app load in init: %s", err)
 		}
@@ -4172,6 +4623,10 @@ func runInitEs(ctx context.Context) {
 
 		// Hotloads locally
 		location := os.Getenv("SHUFFLE_APP_HOTLOAD_FOLDER")
+		if len(location) == 0 {
+			location = "./shuffle-apps"
+		}
+
 		if len(location) != 0 {
 			handleAppHotload(ctx, location, false)
 		}
@@ -4179,43 +4634,16 @@ func runInitEs(ctx context.Context) {
 		log.Printf("[DEBUG] Skipping download of default apps as %d were found", len(workflowapps))
 	}
 
-	log.Printf("[INFO] Downloading OpenAPI data for search - EXTRA APPS")
-	apis := "https://github.com/shuffle/security-openapis"
-
-	// THis gets memory problems hahah
-	//apis := "https://github.com/APIs-guru/openapi-directory"
-	fs := memfs.New()
-	storer := memory.NewStorage()
-	cloneOptions := &git.CloneOptions{
-		URL: apis,
-	}
-	_, err = git.Clone(storer, fs, cloneOptions)
-	if err != nil {
-		log.Printf("[ERROR] Failed loading repo %s into memory: %s", apis, err)
-	} else if err == nil && len(workflowapps) < 10 {
-		log.Printf("[INFO] Finished git clone. Looking for updates to the repo.")
-		dir, err := fs.ReadDir("")
-		if err != nil {
-			log.Printf("Failed reading folder: %s", err)
-		}
-
-		iterateOpenApiGithub(fs, dir, "", "")
-		log.Printf("[INFO] Finished downloading extra API samples")
-	} else {
-		log.Printf("[INFO] Skipping download of extra API samples as %d were found", len(workflowapps))
-	}
-
-	
 	if os.Getenv("SHUFFLE_HEALTHCHECK_DISABLED") != "true" {
-		healthcheckInterval := 30 
-		log.Printf("[INFO] Starting healthcheck job every %d minute. Stats available on /api/v1/health/stats. Disable with SHUFFLE_HEALTHCHECK_DISABLED=true", healthcheckInterval)
+		healthcheckInterval := 60
+		log.Printf("[INFO] Starting healthcheck job every %d minute. Stats available on /api/v1/health/stats, and dashboard on /health. Disable with SHUFFLE_HEALTHCHECK_DISABLED=true", healthcheckInterval)
 		job := func() {
-			// Prepare a fake http.responsewriter 
+			// Prepare a fake http.responsewriter
 			resp := httptest.NewRecorder()
 
 			request := http.Request{}
 			// Add the "force=true" query to the fake request
-			request.URL, err  = url.Parse("/api/v1/health/stats?force=true")
+			request.URL, err = url.Parse("/api/v1/health?force=true")
 			if err != nil {
 				log.Printf("[ERROR] Failed to parse test url for healthstats: %s", err)
 			}
@@ -4231,9 +4659,47 @@ func runInitEs(ctx context.Context) {
 		}
 	}
 
+	// Self-cleaning
+	go func() {
+		cursor := ""
+		cnt := 0
+		newCtx := context.Background()
+		for _, org := range activeOrgs {
+			if len(org.Id) == 0 {
+				log.Printf("[DEBUG] No ID found for org with name '%s'. Why was it made?", org.Name)
+				continue
+			}
+
+			log.Printf("[INFO] Starting self-cleanup of cache keys for org %s", org.Id)
+
+			for {
+				keys, newCursor, err := shuffle.GetAllCacheKeys(newCtx, org.Id, "", 1000, cursor)
+				if err != nil {
+					//log.Printf("[ERROR] Failed getting all cache keys for cleanup: %s", err)
+					break
+				}
+
+				if newCursor == cursor || len(newCursor) == 0 {
+					break
+				}
+
+				if len(keys) == 0 {
+					break
+				}
+
+				cursor = newCursor
+				cnt += 1
+				if cnt > 10 {
+					break
+				}
+			}
+
+			log.Printf("[INFO] Finished self-cleanup of cache keys for org %s", org.Id)
+		}
+	}()
+
 	log.Printf("[INFO] Finished INIT (ES)")
 }
-
 
 func handleVerifyCloudsync(orgId string) (shuffle.SyncFeatures, error) {
 	ctx := context.Background()
@@ -4287,7 +4753,7 @@ func handleStopCloudSync(syncUrl string, org shuffle.Org) (*shuffle.Org, error) 
 		return &org, errors.New(fmt.Sprintf("Couldn't find any sync key to disable org %s", org.Id))
 	}
 
-	log.Printf("[INFO] Should run cloud sync disable for org %s with URL %s and sync key %s", org.Id, syncUrl, org.SyncConfig.Apikey)
+	log.Printf("[INFO] Should run cloud sync disable for org %s with URL %s", org.Id, syncUrl)
 
 	client := shuffle.GetExternalClient(syncUrl)
 	req, err := http.NewRequest(
@@ -4330,6 +4796,7 @@ func handleStopCloudSync(syncUrl string, org shuffle.Org) (*shuffle.Org, error) 
 	org.CloudSync = false
 	org.SyncFeatures = shuffle.SyncFeatures{}
 	org.SyncConfig = shuffle.SyncConfig{}
+	org.Subscriptions = []shuffle.PaymentSubscription{}
 
 	err = shuffle.SetOrg(ctx, org, org.Id)
 	if err != nil {
@@ -4489,6 +4956,17 @@ func handleCloudSetup(resp http.ResponseWriter, request *http.Request) {
 
 			resp.Write(b)
 		} else {
+
+			// Delete cache for the sync features
+			cacheKey := fmt.Sprintf("org_sync_features_%s", org.Id)
+			shuffle.DeleteCache(ctx, cacheKey)
+
+			subscriptionCacheKey := fmt.Sprintf("org_subscriptions_%s", org.Id)
+			shuffle.DeleteCache(ctx, subscriptionCacheKey)
+
+			licenseCacheKey := fmt.Sprintf("org_licensed_%s", org.Id)
+			shuffle.DeleteCache(ctx, licenseCacheKey)
+
 			resp.WriteHeader(200)
 			resp.Write([]byte(fmt.Sprintf(`{"success": true, "reason": "Successfully disabled cloud sync for org."}`)))
 		}
@@ -4500,7 +4978,7 @@ func handleCloudSetup(resp http.ResponseWriter, request *http.Request) {
 	// If you want to disable cloud sync, see previous section.
 	if org.CloudSync {
 		log.Printf("[WARNING] Org %s is already syncing. Skip", org.Id)
-		resp.WriteHeader(401)
+		resp.WriteHeader(400)
 		resp.Write([]byte(fmt.Sprintf(`{"success": false, "reason": "Your org is already syncing. Nothing to set up."}`)))
 		return
 	}
@@ -4545,8 +5023,6 @@ func handleCloudSetup(resp http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	log.Printf("[DEBUG] Respbody from sync: %s", string(respBody))
-
 	responseData := retStruct{}
 	err = json.Unmarshal(respBody, &responseData)
 	if err != nil {
@@ -4572,11 +5048,39 @@ func handleCloudSetup(resp http.ResponseWriter, request *http.Request) {
 	// 2. Add iterative sync schedule for interval seconds
 	// 3. Add another environment for the org's users
 	org.CloudSync = true
-	org.SyncFeatures = responseData.SyncFeatures
+
+	// set cache here for 30 min
+	cacheKey := fmt.Sprintf("org_sync_features_%s", org.Id)
+	featuresBytes, err := json.Marshal(responseData.SyncFeatures)
+	if err != nil {
+		log.Printf("[ERROR] Failed to marshal SyncFeatures for cache: %s", err)
+	} else {
+		shuffle.SetCache(ctx, cacheKey, featuresBytes, 1800)
+	}
+
+	subscriptionCacheKey := fmt.Sprintf("org_subscriptions_%s", org.Id)
+	subscriptionsBytes, err := json.Marshal(responseData.Subscriptions)
+	if err != nil {
+		log.Printf("[ERROR] Failed to marshal Subscriptions for cache: %s", err)
+	} else {
+		shuffle.SetCache(ctx, subscriptionCacheKey, subscriptionsBytes, 1800)
+	}
+
+	licenseCacheKey := fmt.Sprintf("org_licensed_%s", org.Id)
+	licensedBytes, err := json.Marshal(responseData.Licensed)
+	if err != nil {
+		log.Printf("[ERROR] Failed to marshal Licensed for cache: %s", err)
+	} else {
+
+		shuffle.SetCache(ctx, licenseCacheKey, licensedBytes, 1800)
+	}
 
 	org.SyncConfig = shuffle.SyncConfig{
 		Apikey:   responseData.SessionKey,
 		Interval: responseData.IntervalSeconds,
+
+		WorkflowBackup: true,
+		AppBackup:      true,
 	}
 
 	interval := int(responseData.IntervalSeconds)
@@ -4722,7 +5226,7 @@ func makeWorkflowPublic(resp http.ResponseWriter, request *http.Request) {
 	// FIXME - add org check too, and not just owner
 	// Check workflow.Sharing == private / public / org  too
 	if user.Id != workflow.Owner || len(user.Id) == 0 {
-		if workflow.OrgId == user.ActiveOrg.Id && user.Role == "admin" {
+		if workflow.OrgId == user.ActiveOrg.Id {
 			log.Printf("[AUDIT] User %s is accessing workflow %s as admin (public)", user.Username, workflow.ID)
 		} else {
 			log.Printf("[AUDIT] Wrong user (%s) for workflow %s (public)", user.Username, workflow.ID)
@@ -4813,13 +5317,15 @@ func makeWorkflowPublic(resp http.ResponseWriter, request *http.Request) {
 	resp.Write([]byte(fmt.Sprintf(`{"success": true}`)))
 }
 
-
-
 func handleAppZipUpload(resp http.ResponseWriter, request *http.Request) {
 	cors := shuffle.HandleCors(resp, request)
 	if cors {
 		return
 	}
+
+	resp.WriteHeader(500)
+	resp.Write([]byte(`{"success": false, "reason": "The upload API is not yet implemented in self-hosted Shuffle. Please explore the app hotloading system: https://shuffler.io/docs/app_creation#uploading-an-app"}`))
+	return
 
 	//https://stackoverflow.com/questions/22964950/http-request-formfile-handle-zip-files
 	request.ParseMultipartForm(32 << 20)
@@ -4873,11 +5379,10 @@ func handleAppZipUpload(resp http.ResponseWriter, request *http.Request) {
 	resp.Write([]byte("OK"))
 }
 
-
-
 func initHandlers() {
 	var err error
 	ctx := context.Background()
+	CronScheduler.StartAsync()
 
 	log.Printf("[DEBUG] Starting Shuffle backend - initializing database connection")
 	//requestCache = cache.New(5*time.Minute, 10*time.Minute)
@@ -4906,7 +5411,7 @@ func initHandlers() {
 		go runInitEs(ctx)
 	} else {
 		//go shuffle.runInit(ctx)
-		log.Printf("[ERROR] Opensearch is the only viable option. Please set SHUFFLE_ELASTIC=true") 
+		log.Printf("[ERROR] Opensearch is the only viable option. Please set SHUFFLE_ELASTIC=true")
 		os.Exit(1)
 	}
 
@@ -4921,7 +5426,7 @@ func initHandlers() {
 	r.HandleFunc("/api/v1/users/register", handleRegister).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/users/checkusers", checkAdminLogin).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/users/getinfo", handleInfo).Methods("GET", "OPTIONS")
-
+	r.HandleFunc("/api/v1/users/{userId}/apps", shuffle.HandleGetUserApps).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/users/apps", shuffle.HandleGetUserApps).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/users/generateapikey", shuffle.HandleApiGeneration).Methods("GET", "POST", "OPTIONS")
 	r.HandleFunc("/api/v1/users/logout", shuffle.HandleLogout).Methods("POST", "OPTIONS")
@@ -4942,6 +5447,7 @@ func initHandlers() {
 	r.HandleFunc("/api/v1/register", handleRegister).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/checkusers", checkAdminLogin).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/getinfo", handleInfo).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/me", handleInfo).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/getsettings", shuffle.HandleSettings).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/generateapikey", shuffle.HandleApiGeneration).Methods("GET", "POST", "OPTIONS")
 	r.HandleFunc("/api/v1/passwordchange", shuffle.HandlePasswordChange).Methods("POST", "OPTIONS")
@@ -4956,27 +5462,32 @@ func initHandlers() {
 	// Changed from workflows/streams to streams, as appengine was messing up
 	// This does not increase the API counter
 	// Used by frontend
-	r.HandleFunc("/api/v1/streams", handleWorkflowQueue).Methods("POST")
-	r.HandleFunc("/api/v1/streams/results", handleGetStreamResults).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/v1/streams", handleSetWorkflowExecution).Methods("POST")
+	r.HandleFunc("/api/v1/streams/results", handleGetWorkflowExecutionResult).Methods("POST", "OPTIONS")
 
 	// Used by orborus
 	r.HandleFunc("/api/v1/workflows/queue", handleGetWorkflowqueue).Methods("GET", "POST")
 	r.HandleFunc("/api/v1/workflows/queue/confirm", handleGetWorkflowqueueConfirm).Methods("POST")
 
-	// App specific
-	// From here down isnt checked for org specific
+	// App specific. Partially Singul.
+	r.HandleFunc("/api/v1/apps/categories", shuffle.GetActiveCategories).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/apps/categories/run", singul.RunCategoryAction).Methods("POST", "OPTIONS")
+
 	r.HandleFunc("/api/v1/apps/{key}/execute", executeSingleAction).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/apps/{key}/run", executeSingleAction).Methods("POST", "OPTIONS")
-	r.HandleFunc("/api/v1/apps/categories", shuffle.GetActiveCategories).Methods("GET", "OPTIONS")
-	r.HandleFunc("/api/v1/apps/categories/run", shuffle.RunCategoryAction).Methods("POST", "OPTIONS")
+
+	//r.HandleFunc("/api/v1/apps/categories/run", shuffle.RunCategoryAction).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/apps/upload", handleAppZipUpload).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/apps/{appId}/activate", activateWorkflowAppDocker).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/apps/{appId}/deactivate", activateWorkflowAppDocker).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/apps/{appId}/distribute", activateWorkflowAppDocker).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/apps/frameworkConfiguration", shuffle.GetFrameworkConfiguration).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/apps/frameworkConfiguration", shuffle.SetFrameworkConfiguration).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/apps/{appId}", shuffle.UpdateWorkflowAppConfig).Methods("PATCH", "OPTIONS")
 	r.HandleFunc("/api/v1/apps/{appId}", shuffle.DeleteWorkflowApp).Methods("DELETE", "OPTIONS")
 	r.HandleFunc("/api/v1/apps/{appId}/config", shuffle.GetWorkflowAppConfig).Methods("GET", "OPTIONS")
-	r.HandleFunc("/api/v1/apps/run_hotload", handleAppHotloadRequest).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/apps/run_hotload", handleAppHotloadRequest).Methods("GET", "POST", "OPTIONS")
+	r.HandleFunc("/api/v1/apps/{appName}/run_hotload", handleSingleAppHotloadRequest).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/apps/get_existing", LoadSpecificApps).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/apps/download_remote", LoadSpecificApps).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/apps/validate", validateAppInput).Methods("POST", "OPTIONS")
@@ -4989,6 +5500,13 @@ func initHandlers() {
 	r.HandleFunc("/api/v1/apps/authentication/{appauthId}/config", shuffle.SetAuthenticationConfig).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/apps/authentication/{appauthId}", shuffle.DeleteAppAuthentication).Methods("DELETE", "OPTIONS")
 
+	r.HandleFunc("/api/v1/authentication/group", shuffle.AddAppAuthenticationGroup).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/v1/authentication/group", shuffle.GetAppAuthenticationGroup).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/authentication/group/{key}", shuffle.DeleteAppAuthenticationGroup).Methods("DELETE", "OPTIONS")
+
+	r.HandleFunc("/api/v1/authentication/groups", shuffle.AddAppAuthenticationGroup).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/v1/authentication/groups", shuffle.GetAppAuthenticationGroup).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/authentication/groups/{key}", shuffle.DeleteAppAuthenticationGroup).Methods("DELETE", "OPTIONS")
 	// Related to use-cases that are not directly workflows.
 	r.HandleFunc("/api/v1/workflows/usecases/{key}", shuffle.HandleGetUsecase).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/workflows/usecases", shuffle.LoadUsecases).Methods("GET", "OPTIONS")
@@ -5025,6 +5543,13 @@ func initHandlers() {
 
 	// First v2 API
 	r.HandleFunc("/api/v2/workflows/{key}/executions", shuffle.GetWorkflowExecutionsV2).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v2/workflows/generate/llm", shuffle.HandleWorkflowGenerationResponse).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/v2/workflows/edit/llm", shuffle.HandleEditWorkflowWithLLM).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/v2/workflows/generate", shuffle.GenerateSingulWorkflows).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/v2/datastore", shuffle.HandleListCacheKeys).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v2/datastore", shuffle.HandleSetDatastoreKey).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/v2/datastore/category/{category_key}", shuffle.HandleListCacheKeys).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v2/datastore/automate", shuffle.HandleDatastoreCategoryConfig).Methods("POST", "OPTIONS")
 
 	// New for recommendations in Shuffle
 	r.HandleFunc("/api/v1/recommendations/get_actions", shuffle.HandleActionRecommendation).Methods("POST", "OPTIONS")
@@ -5038,6 +5563,16 @@ func initHandlers() {
 	r.HandleFunc("/api/v1/hooks/{key}", handleWebhookCallback).Methods("POST", "GET", "PATCH", "PUT", "DELETE", "OPTIONS")
 	r.HandleFunc("/api/v1/hooks/{key}/delete", shuffle.HandleDeleteHook).Methods("DELETE", "OPTIONS")
 	r.HandleFunc("/api/v1/hooks/{key}", shuffle.HandleDeleteHook).Methods("DELETE", "OPTIONS")
+
+	// This structure is horrendous. Needs fixing after we got the prototype up
+	r.HandleFunc("/api/v1/detections", shuffle.HandleListDetectionCategories).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/detections/{detectionType}/connect", shuffle.HandleDetectionAutoConnect).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/detections/{detection_type}", shuffle.HandleGetDetectionRules).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/detections/{detection_type}/selected_rules/{action}", shuffle.HandleFolderToggle).Methods("PUT", "OPTIONS")
+
+	r.HandleFunc("/api/v1/detections/{triggerId}/selected_rules", shuffle.HandleGetSelectedRules).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/detections/{triggerId}/selected_rules/save", shuffle.HandleSaveSelectedRules).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/v1/detections/{detection_type}/{fileId}/{action}", shuffle.HandleToggleRule).Methods("PUT", "OPTIONS")
 
 	// OpenAPI configuration
 	r.HandleFunc("/api/v1/verify_swagger", verifySwagger).Methods("POST", "OPTIONS")
@@ -5055,9 +5590,11 @@ func initHandlers() {
 	r.HandleFunc("/api/v1/triggers/gmail/register", shuffle.HandleNewGmailRegister).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/triggers/gmail/getFolders", shuffle.HandleGetGmailFolders).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/triggers/pipeline", shuffle.HandleNewPipelineRegister).Methods("POST", "OPTIONS")
-    //r.HandleFunc("/api/v1/triggers/pipeline/save", shuffle.HandleSavePipelineInfo).Methods("PUT", "OPTIONS")
+	r.HandleFunc("/api/v1/triggers/github/register", shuffle.HandleNewGithubRegister).Methods("PUT", "OPTIONS")
+	//r.HandleFunc("/api/v1/triggers/pipeline/save", shuffle.HandleSavePipelineInfo).Methods("PUT", "OPTIONS")
 	r.HandleFunc("/api/v1/pipelines/{key}", handlePipelineCallback).Methods("POST", "GET", "PATCH", "PUT", "DELETE", "OPTIONS")
 	r.HandleFunc("/api/v1/triggers", shuffle.HandleGetTriggers).Methods("GET", "OPTIONS")
+
 	//r.HandleFunc("/api/v1/triggers/gmail/routing", handleGmailRouting).Methods("POST", "OPTIONS")
 
 	r.HandleFunc("/api/v1/triggers/gmail/{key}", shuffle.HandleGetSpecificTrigger).Methods("GET", "OPTIONS")
@@ -5073,29 +5610,43 @@ func initHandlers() {
 	// EVERYTHING below here is NEW for 0.8.0 (written 25.05.2021)
 	r.HandleFunc("/api/v1/workflows/{key}/publish", makeWorkflowPublic).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/cloud/setup", handleCloudSetup).Methods("POST", "OPTIONS")
-	//r.HandleFunc("/api/v1/orgs", shuffle.HandleGetOrgs).Methods("GET", "OPTIONS")
-	//r.HandleFunc("/api/v1/orgs/", shuffle.HandleGetOrgs).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/orgs", shuffle.HandleGetOrgs).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/orgs/", shuffle.HandleGetOrgs).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/orgs/{orgId}", shuffle.HandleGetOrg).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/orgs/{orgId}", shuffle.HandleEditOrg).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/v1/orgs/{orgid}/forms", shuffle.HandleGetOrgForms).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/orgs/{orgId}/create_sub_org", shuffle.HandleCreateSubOrg).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/orgs/{orgId}/change", shuffle.HandleChangeUserOrg).Methods("POST", "OPTIONS") // Swaps to the org
 
 	r.HandleFunc("/api/v1/orgs/{orgId}", shuffle.HandleDeleteOrg).Methods("DELETE", "OPTIONS")
 	r.HandleFunc("/api/v1/orgs/{orgId}/suborgs", shuffle.HandleGetSubOrgs).Methods("GET", "OPTIONS")
-	
+
 	// This is a new API that validates if a key has been seen before.
 	// Not sure what the best course of action is for it.
+	r.HandleFunc("/api/v1/getenvironments", shuffle.HandleGetEnvironments).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/setenvironments", shuffle.HandleSetEnvironments).Methods("PUT", "OPTIONS")
 	r.HandleFunc("/api/v1/environments/{key}/stop", shuffle.HandleStopExecutions).Methods("GET", "POST", "OPTIONS")
 	r.HandleFunc("/api/v1/environments/{key}/rerun", shuffle.HandleRerunExecutions).Methods("GET", "POST", "OPTIONS")
+	r.HandleFunc("/api/v1/environments/{key}/stats", shuffle.HandleGetenvStats).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/environments/{key}/config", shuffle.HandleSetenvConfig).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/v1/environments", shuffle.HandleGetEnvironments).Methods("GET", "OPTIONS")
 
 	r.HandleFunc("/api/v1/orgs/{orgId}/validate_app_values", shuffle.HandleKeyValueCheck).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/orgs/{orgId}/list_cache", shuffle.HandleListCacheKeys).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/orgs/{orgId}/cache/{cache_key}", shuffle.HandleGetCacheKey).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/orgs/{orgId}/get_cache", shuffle.HandleGetCacheKey).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/orgs/{orgId}/set_cache", shuffle.HandleSetCacheKey).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/orgs/{orgId}/delete_cache", shuffle.HandleDeleteCacheKeyPost).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/orgs/{orgId}/cache/{cache_key}", shuffle.HandleDeleteCacheKey).Methods("DELETE", "OPTIONS")
+	r.HandleFunc("/api/v1/orgs/{orgId}/cache/config", shuffle.HandleCacheConfig).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/orgs/{orgId}/stats", shuffle.HandleGetStatistics).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/orgs/{orgId}/stats", shuffle.HandleAppendStatistics).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/v1/orgs/{orgId}/stats/{key}", shuffle.GetSpecificStats).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/orgs/{orgId}/statistics", shuffle.HandleGetStatistics).Methods("GET", "OPTIONS")
+
+	r.HandleFunc("/api/v1/stats", shuffle.HandleGetStatistics).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/stats", shuffle.HandleAppendStatistics).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/v1/stats/{key}", shuffle.GetSpecificStats).Methods("GET", "OPTIONS")
 
 	r.HandleFunc("/api/v1/orgs/{orgId}/cache", shuffle.HandleListCacheKeys).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/orgs/{orgId}/cache", shuffle.HandleSetCacheKey).Methods("POST", "OPTIONS")
@@ -5104,9 +5655,8 @@ func initHandlers() {
 	r.HandleFunc("/api/v1/orgs/{orgId}/datastore", shuffle.HandleSetCacheKey).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/orgs/{orgId}/datastore/{cache_key}", shuffle.HandleDeleteCacheKey).Methods("DELETE", "OPTIONS")
 
-
 	// Docker orborus specific - downloads an image
-	r.HandleFunc("/api/v1/get_docker_image", getDockerImage).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/v1/get_docker_image", getDockerImage).Methods("POST", "GET", "OPTIONS")
 	r.HandleFunc("/api/v1/login_sso", shuffle.HandleSSO).Methods("GET", "POST", "OPTIONS")
 	r.HandleFunc("/api/v1/login_openid", shuffle.HandleOpenId).Methods("GET", "POST", "OPTIONS")
 
@@ -5122,6 +5672,19 @@ func initHandlers() {
 	r.HandleFunc("/api/v1/files/{fileId}", shuffle.HandleGetFileMeta).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/files/{fileId}", shuffle.HandleDeleteFile).Methods("DELETE", "OPTIONS")
 	r.HandleFunc("/api/v1/files", shuffle.HandleGetFiles).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/files/{fileId}/config", shuffle.HandleSetFileConfig).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/v1/files/namespaces/{namespace}/share", shuffle.HandleShareNamespace).Methods("POST", "OPTIONS")
+
+	// This structure is horrendous. Needs fixing after we got the prototype up
+	r.HandleFunc("/api/v1/detections/{detectionType}/connect", shuffle.HandleDetectionAutoConnect).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/detections/{detection_type}", shuffle.HandleGetDetectionRules).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/detections/{triggerId}/selected_rules", shuffle.HandleGetSelectedRules).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/detections/{triggerId}/selected_rules/save", shuffle.HandleSaveSelectedRules).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/v1/detections/{action}", shuffle.HandleFolderToggle).Methods("PUT", "OPTIONS")
+
+	// This is weird.
+	r.HandleFunc("/api/v1/detections/{fileId}/{action}", shuffle.HandleToggleRule).Methods("PUT", "OPTIONS")
+	//r.HandleFunc("/api/v1/detections/siem/node_health", shuffle.HandleTenzirHealthUpdate).Methods("POST","OPTIONS")
 
 	// Introduced in 0.9.21 to handle notifications for e.g. failed Workflow
 	r.HandleFunc("/api/v1/notifications", shuffle.HandleCreateNotification).Methods("POST", "OPTIONS")
@@ -5140,12 +5703,26 @@ func initHandlers() {
 	r.HandleFunc("/api/v1/dashboards/{key}/widgets", shuffle.HandleNewWidget).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/dashboards/{key}/widgets/{widget_id}", shuffle.HandleGetWidget).Methods("GET", "OPTIONS")
 
+	if strings.ToLower(os.Getenv("SHUFFLE_DEBUG_MEMORY")) == "true" || strings.ToLower(os.Getenv("DEBUG_MEMORY")) == "true" {
+		log.Printf("[DEBUG] Memory debugging is enabled on /debug/pprof")
+		r.HandleFunc("/debug/pprof/", pprof.Index)
+		r.HandleFunc("/debug/pprof/heap", pprof.Handler("heap").ServeHTTP)
+		r.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		r.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		r.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	} else {
+		log.Printf("[DEBUG] Memory debugging is disabled. To enable, set SHUFFLE_DEBUG_MEMORY or DEBUG_MEMORY to true")
+	}
+
 	r.Use(shuffle.RequestMiddleware)
 	http.Handle("/", r)
 }
 
 // Had to move away from mux, which means Method is fucked up right now.
 func main() {
+	if os.Getenv("DEBUG") == "true" {
+		debug = true
+	}
 
 	initHandlers()
 	hostname, err := os.Hostname()
@@ -5157,6 +5734,7 @@ func main() {
 	if innerPort == "" {
 		log.Printf("[DEBUG] Running on %s:5001", hostname)
 		log.Fatal(http.ListenAndServe(":5001", nil))
+		os.Setenv("BACKEND_PORT", "5001")
 	} else {
 		log.Printf("[DEBUG] Running on %s:%s", hostname, innerPort)
 		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", innerPort), nil))

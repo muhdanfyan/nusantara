@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 
 import ReactGA from "react-ga4";
 import { 
@@ -15,16 +15,17 @@ import { ToastContainer, toast } from "react-toastify"
 import AuthenticationOauth2 from "../components/Oauth2Auth.jsx";
 import AuthenticationWindow from "../components/AuthenticationWindow.jsx";
 import { base64_decode, appCategories } from "../views/AppCreator.jsx";
+import { Context } from "../context/ContextApi.jsx";
 
 const SetAuthentication = (props) => {
   const { globalUrl, serverside } = props;
-
+  const { supportEmail } = useContext(Context);
   const [app, setApp] = useState({});
   const [isAppLoaded, setIsAppLoaded] = useState(false);
   const [loadFail, setLoadFail] = useState("");
   const [appAuthentication, setAppAuthentication] = React.useState([]);
 
-  const isCloud = window.location.host === "localhost:3002" || window.location.host === "shuffler.io";
+  const isCloud = (window.location.host === "localhost:3002" || window.location.host === "shuffler.io") ? true : (process.env.IS_SSR === "true");
   //const alert = useAlert();
 
   const parseIncomingOpenapiData = (data) => {
@@ -114,7 +115,7 @@ const SetAuthentication = (props) => {
 			setLoadFail(
 				<span>
 					<Typography variant="h4">
-						Failed to load the app. Please contact your provider or support@shuffler.io if this persists
+						Failed to load the app. Please contact your provider or {supportEmail} if this persists
 					</Typography>
 					<Button 
 						variant="contained"
@@ -142,31 +143,26 @@ const SetAuthentication = (props) => {
 	// 3. Help them set info for the app
 	// Make sure to test both private and public apps
 
-	const appname = app.name !== undefined ? app.name : "";
-	const appLink = "/apps/" + app.id || "";
+	const appname = app.name !== undefined ? app.name : ""
+	const appLink = "/apps/" + app.id || ""
 
 	console.log("App: ", app)
 	
 	return (
-		<div style={{width: 1000, margin: "auto", marginTop: 50, }}>
+		<div style={{width: 1000, margin: "auto", paddingTop: 50, }}>
 			{loadFail !== "" ? 
 				loadFail
 				:
 				<><div>
 					<Typography variant="h4" style={{ marginBottom: 20, }}>
-						A Shuffle Organization has invited you to: Configure <a href={appLink} target="_blank" style={{ color: '#FF8444', textDecoration: 'none' }}>{appname}</a> Authentication
+						You are invited to: Configure <a href={appLink} target="_blank" style={{ color: '#FF8444', textDecoration: 'none' }}>{appname}</a> Authentication
 					</Typography>
 
-					{/* What does this mean box */}
 					<Typography variant="h6" style={{ marginBottom: 20, }}>
 						What does this mean?
 					</Typography>
-					<Typography variant="body1" style={{ marginBottom: 20, }}>
+					<Typography variant="body1" style={{ marginBottom: 20, color: "rgba(255,255,255,0.4)", }}>
 						A Shuffle Organization has invited you to configure authentication for this app so that they can use this authentication in one of their workflows.
-					</Typography>
-
-					<Typography variant="h6">
-						Authenticate Here:
 					</Typography>
 
 					<Typography variant="body1" style={{ marginBottom: 20, }}>
@@ -195,7 +191,8 @@ const SetAuthentication = (props) => {
 									appAuthentication={appAuthentication} />}
 					</Typography>
 
-					<Typography variant="h6" style={{ marginBottom: 20, }}>
+					{/*
+					<Typography variant="h6" style={{ marginTop: 50, marginBottom: 20, }}>
 						What can they do with this?
 					</Typography>
 
@@ -203,12 +200,11 @@ const SetAuthentication = (props) => {
 						You can check the actions they want to use <a href={appLink} target="_blank" style={{ color: '#FF8444', textDecoration: 'none' }}>here</a>.
 					</Typography>
 
-					<Typography variant="body1" style={{ marginBottom: 20, }}>
-						{/* Add a box below */}
+					<Typography variant="body1" style={{ marginBottom: 20, color: "rgba(255,255,255,0.4)",}}>
 						<div className="collapsible-container">
 							<div className="collapsible-list">
 								{app.actions?.map((item, index) => (
-									<div key={index} className="collapsible-item">
+									<div key={index} className="collapsible-item" style={{cursor: "pointer", }}>
 										<div className="collapsible-label" onClick={() => handleToggle(index)}>
 											{item.label}
 										</div>
@@ -222,6 +218,7 @@ const SetAuthentication = (props) => {
 							</div>
 						</div>
 					</Typography>
+					*/}
 				</div>
 					<>
 					<div style={{ height: 100, }}></div>

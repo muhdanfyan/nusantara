@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 
-import theme from '../theme.jsx';
+import {getTheme} from '../theme.jsx';
 import classNames from "classnames";
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import { DataGrid, GridColDef, GridValueGetterParams } from '@mui/x-data-grid'
@@ -28,51 +28,41 @@ import {
 	Paper,
 	Chip,
 	Checkbox,
+	Box,
 } from "@mui/material";
 
-import { 
-	BarChart,
-	GridlineSeries,
-	Gridline,
-} from 'reaviz';
-
 import { typecost, typecost_single, } from "../views/HandlePaymentNew.jsx";
-
-const LineChartWrapper = ({keys, inputname, height, width}) => {
-  const [hovered, setHovered] = useState("");
-	const inputdata = keys.data === undefined ? keys : keys.data
-	
-	return (
-		<div style={{color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: theme.palette.borderRadius, padding: 30, marginTop: 15, backgroundColor: theme.palette.platformColor, overflow: "hidden", }}>
-			<Typography variant="h6" style={{marginBotton: 15, }}>
-				{inputname}
-			</Typography>
-			<BarChart
-				width={"100%"}
-				height={height}
-				data={inputdata}
-				gridlines={
-					<GridlineSeries line={<Gridline direction="all" />} />
-				}
-			/>
-		</div>
-	)
-}
+import LineChartWrapper from '../components/LineChartWrapper.jsx';
+import { Context } from '../context/ContextApi.jsx';
 
 
 const AppStats = (defaultprops) => {
-  const { globalUrl, selectedOrganization, userdata, isCloud, inputWorkflows,clickedFromOrgTab } = defaultprops;
+  const { 
+	  globalUrl, 
+	  selectedOrganization, 
+	  userdata, 
+	  isCloud, 
+	  inputWorkflows,
+	  clickedFromOrgTab,
+	  syncStats,
+	  statistics,
+	  monthlyAppRunsParent,
+	  setMonthlyAppRunsParent,
+	  monthlyAllSuborgExecutions,
+	  setMonthlyAllSuborgExecutions,
+	  currentTab
+  } = defaultprops;
 
   const [keys, setKeys] = useState([])
   const [searches, setSearches] = useState([]);
   const [appRuns, setAppruns] = useState(undefined);
+  const [childOrgsAppRuns, setChildOrgsAppRuns] = useState(undefined);
   const [appRunCosts, setApprunCosts] = useState(undefined);
   const [workflowRuns, setWorkflowRuns] = useState(undefined);
   const [subflowRuns, setSubflowRuns] = useState(undefined);
 
   const [endTime, setEndTime] = useState("")
   const [startTime, setStartTime] = useState("")
-  const [statistics, setStatistics] = useState(undefined);
   const [filteredStatistics, setFilteredStatistics] = useState(undefined);
 
   const [apprunCost, setApprunCost] = useState(0)
@@ -82,8 +72,11 @@ const AppStats = (defaultprops) => {
   const [workflows, setWorkflows] = useState(inputWorkflows === undefined ? [] : inputWorkflows)
   const [resultRows, setResultRows] = useState([])
   const [resultLoading, setResultLoading] = useState(true)
-
-  const includedExecutions = selectedOrganization.sync_features.app_executions !== undefined ? selectedOrganization.sync_features.app_executions.limit : 0 
+  const { themeMode, brandColor } = useContext(Context);
+  const [onpremAppRuns, setOnpremAppRuns] = useState(0)
+  const theme = getTheme(themeMode, brandColor)
+  
+  const includedExecutions = selectedOrganization?.sync_features?.app_executions !== undefined ? selectedOrganization?.sync_features?.app_executions?.limit : 0 
 
   useEffect(() => {
 	  if (workflows === undefined || workflows === null || workflows.length === 0) {
@@ -91,12 +84,157 @@ const AppStats = (defaultprops) => {
 	  }
   }, [])
 
+  const handleDataSetting = useCallback((inputdata, grouping) => {
+		if (inputdata === undefined || inputdata === null) {
+			return 
+		}
 
+		const statKey = syncStats === true ? "onprem_stats" : "daily_statistics"
+		const dailyStats = inputdata[statKey]
+		if (dailyStats === undefined || dailyStats === null) {
+			return
+		}
+
+		var appRuns = {
+			"key": "App Runs",
+			"data": []
+		}
+
+		var childorgappRuns = {
+			"key": "Child Org App Runs",
+			"data": []
+		}
+
+		var workflowRuns = {
+			"key": "Workflow Runs (includes subflows)",
+			"data": []
+		}
+
+		var subflowRuns = {
+			"key": "Subflow Runs",
+			"data": []
+		}
+
+		var appcostRuns = {
+			"key": "Cost of App Runs",
+			"data": []
+		}
+
+		for (let key in dailyStats) {
+			// Always skips first one as it has accumulated data in it
+			if (key === 0) {
+				continue
+			}
+
+			const item = dailyStats[key]
+			if (item["date"] === undefined) {
+				console.log("No date: ", item)
+				continue
+			}
+
+			// Check if app_executions key in item
+			if (item["app_executions"] !== undefined && item["app_executions"] !== null) {
+				appRuns["data"].push({
+					key: new Date(item["date"]).toISOString(), 
+					data: item["app_executions"]
+				})
+
+				// Add number 
+				appcostRuns["data"].push({
+					key: new Date(item["date"]).toISOString(),
+					data: (item["app_executions"] * invocationCost).toFixed(2)
+				})
+			} 
+
+			if (item["child_app_executions"] !== undefined && item["child_app_executions"] !== null) {
+				childorgappRuns["data"].push({
+					key: new Date(item["date"]).toISOString(),
+					data: item["child_app_executions"]
+				})
+			}
+
+			// Check if workflow_executions key in item
+			if (item["workflow_executions"] !== undefined && item["workflow_executions"] !== null) {
+				workflowRuns["data"].push({
+					key: new Date(item["date"]).toISOString(),
+					data: item["workflow_executions"]
+				})
+			}
+
+			if (item["subflow_executions"] !== undefined && item["subflow_executions"] !== null) {
+				subflowRuns["data"].push({
+					key: new Date(item["date"]).toISOString(),
+					data: item["subflow_executions"]
+				})
+			}
+		}
+
+		// Only add today's data if endTime is not set or if today falls within the selected date range
+		const today = new Date()
+		const todayStartOfDay = new Date(today)
+		todayStartOfDay.setHours(0, 0, 0, 0)
+		const shouldAddTodayData = endTime === "" || endTime === undefined || endTime === null || 
+			(new Date(endTime) >= todayStartOfDay)
+
+		if (!syncStats && shouldAddTodayData) {
+			// Adds data for today 
+			if (inputdata["daily_app_executions"] !== undefined && inputdata["daily_app_executions"] !== null) {
+				appRuns["data"].push({
+					key: new Date().toISOString(),
+					data: inputdata["daily_app_executions"]
+				})
+
+				appcostRuns["data"].push({
+					key: new Date().toISOString(),
+					data: (inputdata["daily_app_executions"] * invocationCost).toFixed(2)
+				})
+			}
+
+			if (inputdata["daily_child_app_executions"] !== undefined && inputdata["daily_app_executions"] !== null) {
+				childorgappRuns["data"].push({
+					key: new Date().toISOString(),
+					data: inputdata["daily_child_app_executions"]
+				})
+			}
+
+			if (inputdata["daily_workflow_executions"] !== undefined && inputdata["daily_workflow_executions"] !== null) {
+				workflowRuns["data"].push({
+					key: new Date().toISOString(),
+					data: inputdata["daily_workflow_executions"]
+				})
+			}
+
+			if (inputdata["daily_subflow_executions"] !== undefined && inputdata["daily_subflow_executions"] !== null) {
+				subflowRuns["data"].push({
+					key: new Date().toISOString(),
+					data: inputdata["daily_subflow_executions"]
+				})
+			}
+		}
+
+		// Only for parent orgs
+		if (childorgappRuns["data"].length > 0) {
+	  		setChildOrgsAppRuns(childorgappRuns)
+		}
+
+		setSubflowRuns(subflowRuns)
+		setWorkflowRuns(workflowRuns)
+		setAppruns(appRuns)
+		setApprunCosts(appcostRuns)
+	}, [syncStats, endTime, startTime])
+
+  useEffect(() => {
+	if (statistics && statistics?.org_id?.length > 0) {
+		handleDataSetting(statistics, "day")
+	}
+}, [statistics])
+
+  useEffect(() => {
+	setStartTime("")
+	setEndTime("")
+  }, [currentTab])
 
   const getWorkflowStats = async (workflow, startTime, endTime) => {
-	  if (!userdata.support) {
-		  return workflow
-	  }
 
 	  if (workflow.id === undefined || workflow.id === null || workflow.id === "") {
 		  return workflow
@@ -134,6 +272,9 @@ const AppStats = (defaultprops) => {
 				Accept: "application/json",
 			},
 			credentials: "include",
+	  }).catch((error) => {
+		  console.log("Error getting workflow stats: " + error);
+		  return workflow
 	  })
 
 	  if (response.status !== 200) {
@@ -158,14 +299,8 @@ const AppStats = (defaultprops) => {
   }
 
   const loadWorkflowStats = (foundWorkflows, startTime, endTime) => {
-	  if (!userdata.support) {
-		  console.log("Not support")
-
-		  return
-	  }
-
 	  if (foundWorkflows === undefined || foundWorkflows === null || foundWorkflows.length === 0) {
-		  console.log("Not workflows")
+		  setResultLoading(false)
 		  return
 	  }
 
@@ -174,6 +309,9 @@ const AppStats = (defaultprops) => {
 	  const promises = foundWorkflows.slice(0, 50).map(wf => getWorkflowStats(wf, startTime, endTime));
 
 	  const allData = Promise.all(promises);
+	  if (allData === undefined || allData === null) {
+		  setResultLoading(false)
+	  }
 
 	  allData.then((data) => {
 	  	var total = 0
@@ -233,15 +371,17 @@ const AppStats = (defaultprops) => {
 			return
 		}
 
-		if (statistics["daily_statistics"] === undefined || statistics["daily_statistics"] === null) {
+		const statKey = syncStats === true ? "onprem_stats" : "daily_statistics"
+		if (!syncStats && (statistics[statKey] === undefined || statistics[statKey] === null)) {
 			setFilteredStatistics(statistics)
+			setMonthlyAppRunsParent(statistics["monthly_app_executions"] ?? 0)
 			return
 		}
 
 		// Calculate month to date cost
 		var mtd_cost = 0
-		for (let key in statistics["daily_statistics"]) {
-			const item = statistics["daily_statistics"][key]
+		for (let key in statistics[statKey]) {
+			const item = statistics[statKey][key]
 			if (item["date"] === undefined) {
 				continue
 			}
@@ -281,33 +421,52 @@ const AppStats = (defaultprops) => {
 			}
 		}
 
-		// Make a date at the 1st of the current month
+		// Make a date at the 1st of the current month - only when no start time is selected
 		var foundstarttime = (new Date())
-		foundstarttime.setDate(1)
 		if (startTime !== "" && startTime !== undefined && startTime !== null) {
-			foundstarttime = startTime 
+			foundstarttime = new Date(startTime)
+			// Set to start of day to include the entire start date
+			foundstarttime.setHours(0, 0, 0, 0)
+		} else {
+			// Default to 1st of current month when no start time is selected
+			foundstarttime.setDate(1)
+			foundstarttime.setHours(0, 0, 0, 0)
 		}
 
-		// Set to tomorrow by default
+		// Set end time properly
 		var foundendtime = (new Date())
-		foundendtime.setDate(foundendtime.getDate() + 1)
-
-		// Check if endtime is after the daily statistics["date"] string
 		if (endTime !== "" && endTime !== undefined && endTime !== null) { 
-			foundendtime = endTime
+			foundendtime = new Date(endTime)
+			// Set to end of day to include the entire end date
+			foundendtime.setHours(23, 59, 59, 999)
+		} else {
+			// Default to current date when no end time is selected
+			foundendtime.setHours(23, 59, 59, 999)
 		}
 
 		// Check if start time is before the daily statistics["date"] string
 		var newlist = []
-		for (let key in statistics["daily_statistics"]) {
-			const item = statistics["daily_statistics"][key]
+		for (let key in statistics[statKey]) {
+			const item = statistics[statKey][key]
 			if (item["date"] === undefined) {
 				continue
 			}
 
 			const date = new Date(item["date"])
-			if (date >= foundstarttime) {
-				if (date <= foundendtime) {
+			// Normalize the date to start of day for comparison
+			const normalizedDate = new Date(date)
+			normalizedDate.setHours(0, 0, 0, 0)
+			
+			// Normalize foundstarttime for comparison
+			const normalizedStartTime = new Date(foundstarttime)
+			normalizedStartTime.setHours(0, 0, 0, 0)
+			
+			// Normalize foundendtime for comparison  
+			const normalizedEndTime = new Date(foundendtime)
+			normalizedEndTime.setHours(0, 0, 0, 0)
+			
+			if (normalizedDate >= normalizedStartTime) {
+				if (normalizedDate <= normalizedEndTime) {
 					newlist.push(item)
 				}
 			}
@@ -331,7 +490,7 @@ const AppStats = (defaultprops) => {
 		var appexecutions = 0
 		var estimatedcost = 0
 		if (newlist.length > 0) {
-			tmpstats["daily_statistics"] = newlist
+			tmpstats[statKey] = newlist
 
 			for (let key in newlist) {
 				const item = newlist[key]
@@ -342,12 +501,54 @@ const AppStats = (defaultprops) => {
 				workflowexecutions += item["workflow_executions"]
 				appexecutions += item["app_executions"]
 
+				if (currentTab === 0 || currentTab === 3) {
+					appexecutions += (item["child_app_executions"] ?? 0)
+				}
+
 				estimatedcost += (item["app_executions"] * invocationCost)
+			}
+
+			const today = new Date();
+			const isCurrentMonthSelected =
+				(startTime === "" && endTime === "") ||
+				(
+					new Date(foundstarttime).getMonth() === today.getMonth() &&
+					new Date(foundstarttime).getFullYear() === today.getFullYear() &&
+					new Date(foundendtime).getMonth() === today.getMonth() &&
+					new Date(foundendtime).getFullYear() === today.getFullYear()
+			 );
+
+			if (!syncStats && isCurrentMonthSelected) {
+				if (statistics["daily_app_executions"] !== undefined && statistics["daily_app_executions"] !== null) {
+					appexecutions += statistics["daily_app_executions"] + (statistics["daily_child_app_executions"] ?? 0)
+				}
 			}
 
 			tmpstats["monthly_workflow_executions"] = workflowexecutions
 			tmpstats["monthly_app_executions"] = appexecutions
+			if (syncStats) {
+				setOnpremAppRuns(appexecutions)
+			}
+		} else {
+			const today = new Date();
+			const isCurrentMonthSelected =
+				(startTime === "" && endTime === "") ||
+				(
+					new Date(foundstarttime).getMonth() === today.getMonth() &&
+					new Date(foundstarttime).getFullYear() === today.getFullYear() &&
+					new Date(foundendtime).getMonth() === today.getMonth() &&
+					new Date(foundendtime).getFullYear() === today.getFullYear()
+			 );
+			 
+			if (!syncStats && isCurrentMonthSelected) {
+				if (statistics["daily_app_executions"] !== undefined && statistics["daily_app_executions"] !== null) {
+					appexecutions += statistics["daily_app_executions"] + (statistics["daily_child_app_executions"] ?? 0)
+				}
+			}
+
+			tmpstats["monthly_app_executions"] = appexecutions
 		}
+
 
 		// Make estimatedcost have max 2 decimals
 		if (isCloud) {
@@ -359,7 +560,16 @@ const AppStats = (defaultprops) => {
 		}
 
 		setFilteredStatistics(tmpstats)
-		handleDataSetting(tmpstats, "day") 
+		handleDataSetting(tmpstats, "day")
+		// if we have done monthly reset than only show monthly app runs as current month app run
+		const currentMonth = new Date().getMonth() + 1
+		if (!syncStats && !monthlyAppRunsParent && statistics["monthly_app_executions"] > 0 && currentMonth === statistics["last_monthly_reset_month"]) {
+			setMonthlyAppRunsParent(statistics["monthly_app_executions"])
+		}
+
+		if (!syncStats && !monthlyAllSuborgExecutions && statistics["monthly_child_app_executions"]> 0 && currentMonth === statistics["last_monthly_reset_month"]) {
+			setMonthlyAllSuborgExecutions(statistics["monthly_child_app_executions"])
+		}
 
 
 		if (workflows !== undefined && workflows !== null && workflows.length > 0) {
@@ -370,7 +580,7 @@ const AppStats = (defaultprops) => {
 			loadWorkflowStats(foundWorkflows, startTime, endTime)
 		}
 
-	}, [statistics, startTime, endTime])
+	}, [statistics, startTime, endTime, syncStats, currentTab, handleDataSetting])
 
 	const handleStartTimeChange = (date) => {
 		setStartTime(date)
@@ -379,153 +589,17 @@ const AppStats = (defaultprops) => {
 	const handleEndTimeChange = (date) => {
 		setEndTime(date)
 	}
-
-	const handleDataSetting = (inputdata, grouping) => {
-		if (inputdata === undefined || inputdata === null) {
-			return 
-		}
-
-		const dailyStats = inputdata.daily_statistics
-		if (dailyStats === undefined || dailyStats === null) {
-			return
-		}
-
-		var appRuns = {
-			"key": "App Runs",
-			"data": []
-		}
-
-		var workflowRuns = {
-			"key": "Workflow Runs (includes subflows)",
-			"data": []
-		}
-
-		var subflowRuns = {
-			"key": "Subflow Runs",
-			"data": []
-		}
-
-		var appcostRuns = {
-			"key": "Cost of App Runs",
-			"data": []
-		}
-
-		for (let key in dailyStats) {
-			// Always skips first one as it has accumulated data in it
-			if (key === 0) {
-				continue
-			}
-
-			const item = dailyStats[key]
-			if (item["date"] === undefined) {
-				console.log("No date: ", item)
-				continue
-			}
-
-			// Check if app_executions key in item
-			if (item["app_executions"] !== undefined && item["app_executions"] !== null) {
-				appRuns["data"].push({
-					key: new Date(item["date"]), 
-					data: item["app_executions"]
-				})
-
-				// Add number 
-				appcostRuns["data"].push({
-					key: new Date(item["date"]),
-					data: (item["app_executions"] * invocationCost).toFixed(2)
-				})
-			} 
-
-			// Check if workflow_executions key in item
-			if (item["workflow_executions"] !== undefined && item["workflow_executions"] !== null) {
-				workflowRuns["data"].push({
-					key: new Date(item["date"]),
-					data: item["workflow_executions"]
-				})
-			}
-
-			if (item["subflow_executions"] !== undefined && item["subflow_executions"] !== null) {
-				subflowRuns["data"].push({
-					key: new Date(item["date"]),
-					data: item["subflow_executions"]
-				})
-			}
-		}
-
-		// Adds data for today 
-		if (inputdata["daily_app_executions"] !== undefined && inputdata["daily_app_executions"] !== null) {
-			appRuns["data"].push({
-				key: new Date(),
-				data: inputdata["daily_app_executions"]
-			})
-
-			appcostRuns["data"].push({
-				key: new Date(),
-				data: (inputdata["daily_app_executions"] * invocationCost).toFixed(2)
-			})
-		}
-
-		if (inputdata["daily_workflow_executions"] !== undefined && inputdata["daily_workflow_executions"] !== null) {
-			workflowRuns["data"].push({
-				key: new Date(),
-				data: inputdata["daily_workflow_executions"]
-			})
-		}
-
-		if (inputdata["daily_subflow_executions"] !== undefined && inputdata["daily_subflow_executions"] !== null) {
-			subflowRuns["data"].push({
-				key: new Date(),
-				data: inputdata["daily_subflow_executions"]
-			})
-		}
-
-		setSubflowRuns(subflowRuns)
-		setWorkflowRuns(workflowRuns)
-		setAppruns(appRuns)
-		setApprunCosts(appcostRuns)
-	}	
-
-	const getStats = () => {
-		fetch(`${globalUrl}/api/v1/orgs/${selectedOrganization.id}/stats`, {
-		  method: "GET",
-		  headers: {
-			"Content-Type": "application/json",
-			Accept: "application/json",
-		  },
-		  credentials: "include",
-		})
-		.then((response) => {
-			if (response.status !== 200) {
-				console.log("Status not 200 for workflows :O!: ", response.status);
-				return;
-			}
-
-			return response.json();
-		})
-		.then((responseJson) => {
-			if (responseJson["success"] === false) {
-				return
-			}
-
-			setStatistics(responseJson)
-			handleDataSetting(responseJson, "day")
-		})
-		.catch((error) => {
-			console.log("error: ", error)
-		});
-	}
 	
-	useEffect(() => {
-		getStats()
-	}, [])
-
 	const paperStyle = {
 		textAlign: "center", 
-		padding: 40, 
-		margin: 5, 
-		backgroundColor: theme.palette.platformColor,
-		border: "1px solid rgba(255,255,255,0.3)",
-		maxWidth: 300,
+		padding: "40px", 
+		margin: "5px", 
+		backgroundColor: theme.palette.cardBackgroundColor,
+		border: theme.palette.defaultBorder,
+		maxWidth: "300px",
+		"&:hover": {
+			backgroundColor: theme.palette.cardHoverColor,
+		},
 	}
 
 	const columns: GridColDef[] = [
@@ -635,141 +709,257 @@ const AppStats = (defaultprops) => {
 	]
 
   	const data = (
-    <div className="content" style={{width: "100%", margin: "auto", }}>
-		<Typography variant="body1" style={{margin: "auto", marginLeft: 10, marginBottom: 20, }} color="textSecondary">
+    <div className="content" style={{width: "100%", margin: "auto", marginTop: 20}}>
+		<Typography style={{margin: "auto", marginLeft: 10, marginBottom: 20, fontSize: 16}} color="textSecondary">
 			All shown statistics are gathered from <a 
-				href={`${globalUrl}/api/v1/orgs/${selectedOrganization.id}/stats`} 
+				href={`${globalUrl}/api/v1/orgs/${selectedOrganization?.id}/stats`} 
 				target="_blank"
-				style={{ textDecoration: "none", color: "#f85a3e",}}
+				style={{ textDecoration: "none", color: theme.palette.linkColor,}}
 			>Your Organisation Statistics. </a>
-			It exists to give you more insight into your workflows, and to understand your utilization of the Shuffle platform. <b>The billing tracker is in Beta, and is always calculated manually before being invoiced.</b>
+
+			{currentTab === 0 ? 
+		<span>
+			All Organization app runs are calculated base on addition of parent org app runs + all child org app runs.
+		 </span>: <span>It exists to give you more insight into your workflows, and to
+        understand your utilization of the Shuffle platform.{" "}</span>}
+			<br style={{}}/>
+			{syncStats !== true ? null : 
+				"PS: You are currently looking at data from your onprem synced org"}
 		</Typography>
 
-		<div style={{display: "flex", textAlign: "center",}}>
+		<div style={{display: "flex", flexDirection: "column", textAlign: "center",}}>
+			<div style={{flexDirection: "row", }}>
 			{filteredStatistics !== undefined ?
 				<div style={{flex: 1, display: "flex", textAlign: "center",}}>
-					<Tooltip title={
-						<Typography variant="body1" style={{padding: 10, }}>
-							The cost of app runs in the selected period based on {filteredStatistics.monthly_app_executions} App Runs. These numbers do not exclude your included 10.000/month or {includedExecutions} App Runs per month. App Run cost: ${invocationCost}. 
-						</Typography>
-					}>
-						<Paper style={paperStyle}>
-							<Typography variant="h4">
-								${selectedOrganization.lead_info.customer === false && selectedOrganization.lead_info.pov === false ?
-									0 
-									: 
-									apprunCost
-								}
+
+					{/* {syncStats == true ? null : 
+						<Tooltip title={
+							<Typography variant="body1" style={{padding: 10, }}>
+								The cost of app runs in the selected period based on {filteredStatistics.monthly_app_executions} App Runs. These numbers do not exclude your included 10.000/month or {includedExecutions} App Runs per month. App Run cost: ${invocationCost}. 
 							</Typography>
-							<Typography variant="h6">
-								Period Cost
-							</Typography>
-						</Paper>
-					</Tooltip>
+						}>
+							<Box sx={paperStyle}>
+								<Typography variant="h4">
+									${selectedOrganization?.lead_info?.customer === false && selectedOrganization?.lead_info?.pov === false ?
+										0 
+										: 
+										apprunCost
+									}
+								</Typography>
+								
+								<Typography variant="h6">
+									Period Cost
+								</Typography>
+							</Box>
+						</Tooltip>
+					} */}
+
+					{/* {syncStats === true ? null : */}
 					<Tooltip title={
 						<Typography variant="body1" style={{padding: 10, }}>
 							App runs in the selected period
 						</Typography>
 					}>
-					<Paper style={paperStyle}>
-						<Typography variant="h4">
-							{filteredStatistics.monthly_app_executions === null || filteredStatistics.monthly_app_executions === undefined ? 0 : filteredStatistics.monthly_app_executions}
-						</Typography>
-						<Typography variant="h6">
-							App Runs 
-						</Typography>
-					</Paper>
+						<Box sx={paperStyle}>
+							{syncStats === true ? 
+							<Typography variant="h4">
+								{onpremAppRuns}
+							</Typography>: 
+							<Typography variant="h4">
+								{filteredStatistics.monthly_app_executions === null || filteredStatistics.monthly_app_executions === undefined ? 0 : filteredStatistics.monthly_app_executions}
+							</Typography>}
+							<Typography variant="h6">
+								App Runs 
+							</Typography>
+						</Box>
 					</Tooltip> 
+					{/* } */}
+
+					{syncStats === true || currentTab === 0 ? null :
 					<Tooltip title={
 						<Typography variant="body1" style={{padding: 10, }}>
 							Workflow runs in the selected period 
 						</Typography>
 					}>
-						<Paper style={paperStyle}>
+						<Box sx={paperStyle}>
 							<Typography variant="h4">
 								{filteredStatistics.monthly_workflow_executions === null || filteredStatistics.monthly_workflow_executions === undefined ? 0 : filteredStatistics.monthly_workflow_executions}
 							</Typography>
 							<Typography variant="h6">
 								Workflow Runs 
 							</Typography>
-						</Paper>
+						</Box>
 					</Tooltip>
-					<Tooltip title={
-						<Typography variant="body1" style={{padding: 10, }}>
-							Estimated cost to be billed at the end of the current month. Subtracted contractually included app runs. Actual cost month to date: ${monthToDateCost}. App Run cost: ${invocationCost}.
-						</Typography>
-					}>
-						<Paper style={{
-							textAlign: "center", 
-							padding: 40, 
-							margin: 5, 
-							marginLeft: clickedFromOrgTab? null:90, 
-							backgroundColor: theme.palette.platformColor,
-							border: "1px solid rgba(255,255,255,0.3)",
-							maxWidth: 300,
-						}}>
-							<Typography variant="h4">
-								${monthTotalCost}
-							</Typography>
-							<Typography variant="h6">
-								Estimated cost 
-							</Typography>
-						</Paper>
-					</Tooltip>
-				</div>
-			: null}
+					}
 
-			<LocalizationProvider dateAdapter={AdapterDayjs} style={{flex: 1, }}>
-				<div style={{display: "flex", flexDirection: "column", }}>
+					{/* {syncStats === true ? null :
+						<Tooltip title={
+							<Typography variant="body1" style={{padding: 10, }}>
+								Estimated cost to be billed at the end of the current month. Subtracted contractually included app runs. Actual cost month to date: ${monthToDateCost}. App Run cost: ${invocationCost}.
+							</Typography>
+						}>
+							<Box sx={paperStyle}>
+								<Typography variant="h4">
+									${monthTotalCost}
+								</Typography>
+								<Typography variant="h6">
+									Estimated cost 
+								</Typography>
+							</Box>
+						</Tooltip>
+					} */}
+					<LocalizationProvider dateAdapter={AdapterDayjs} style={{ flex: 1 }}>
+				<div style={{ display: "flex", flexDirection: "column", gap: "10px", justifyContent: 'center', alignItems: 'flex-start', paddingTop: 10 }}>
+				  <div
+					style={{
+					  display: "flex",
+					  flexDirection: "row",
+					  flex: 1,
+					  alignItems: "center",
+					}}
+				  >
+					<Typography
+					  style={{
+						marginLeft: 10,
+						marginRight: 10,
+						fontSize: 16,
+						whiteSpace: "nowrap",
+					  }}
+					  color="textSecondary"
+					>
+					  Search from
+					</Typography>
 					<DateTimePicker
+					  slotProps={{
+						textField: {
+						  sx: {
+							"& .MuiOutlinedInput-root": {
+							  "& fieldset": {
+								borderColor: "#494949 !important",
+								borderWidth: "1px !important",
+							  },
+							  "&:hover fieldset": {
+								borderColor: "#FFFFFF !important",
+							  },
+							  "&.Mui-focused fieldset": {
+								borderColor: "#FFFFFF !important",
+							  },
+							  height: "35px",
+							  fontSize: 16,
+							  color: "#c8c8c8",
+							},
+						  },
+						},
+					  }}
 					  sx={{
-						marginTop: 1, 
-						marginLeft: 1,
-						minWidth: 240,
-						maxWidth: 240,
+						"& .MuiInputBase-root": { 
+						  height: "35px",
+						  minHeight: "35px",
+						},
+						"& .MuiInputBase-input": {
+						  height: "35px",
+						  padding: "0 14px",
+						  boxSizing: "border-box",
+						  color: "#c8c8c8",
+						  fontSize: 16,
+						}
 					  }}
 					  ampm={false}
-					  label="Search from"
 					  format="YYYY-MM-DD HH:mm:ss"
 					  value={startTime}
 					  onChange={handleStartTimeChange}
-					  renderInput={(params) => <TextField {...params} />}
 					/>
+				  </div>
+				  <div
+					style={{
+					  display: "flex",
+					  flexDirection: "row",
+					  flex: 1,
+					  alignItems: "center",
+					}}
+				  >
+					<Typography
+					  style={{
+						marginLeft: 10,
+						marginRight: 10,
+						fontSize: 16,
+						whiteSpace: "nowrap",
+					  }}
+					  color="textSecondary"
+					>
+					  Search until
+					</Typography>
 					<DateTimePicker
+					  slotProps={{
+						textField: {
+						  sx: {
+							"& .MuiOutlinedInput-root": {
+							  "& fieldset": {
+								borderColor: "#494949 !important",
+								borderWidth: "1px !important",
+							  },
+							  "&:hover fieldset": {
+								borderColor: "#FFFFFF !important",
+							  },
+							  "&.Mui-focused fieldset": {
+								borderColor: "#FFFFFF !important",
+							  },
+							  height: "35px",
+							  fontSize: 16,
+							  color: "#c8c8c8",
+							},
+						  },
+						},
+					  }}
 					  sx={{
-						marginTop: 1, 
-						marginLeft: 1,
-						minWidth: 240,
-						maxWidth: 240,
+						marginTop: 1,
+						"& .MuiInputBase-root": { 
+						  height: "35px",
+						  minHeight: "35px",
+						},
+						"& .MuiInputBase-input": {
+						  height: "35px",
+						  padding: "0 14px",
+						  boxSizing: "border-box",
+						  color: "#c8c8c8",
+						  fontSize: 16,
+						}
 					  }}
 					  ampm={false}
-					  label="Search until"
 					  format="YYYY-MM-DD HH:mm:ss"
 					  value={endTime}
 					  onChange={handleEndTimeChange}
-					  renderInput={(params) => <TextField {...params} />}
 					/>
+				  </div>
 				</div>
-			</LocalizationProvider>
-
+			  </LocalizationProvider>
+				</div>
+			: null}
+			</div>
 		</div>
 
 		{appRuns === undefined ? 
 			null
 			: 
-			<LineChartWrapper keys={appRuns} height={300} width={"100%"} inputname={"Daily App Runs"}/>
+			<LineChartWrapper keys={appRuns} height={300} width={"100%"} inputname={"App Runs - Current Org"} border={false}/>
 		}
 
-		{workflowRuns === undefined ? 
+		{childOrgsAppRuns === undefined || currentTab === 1 ? 
 			null
 			: 
-			<LineChartWrapper keys={workflowRuns} height={300} width={"100%"} inputname={"Daily Workflow Runs (including subflows)"}/>
+			<LineChartWrapper keys={childOrgsAppRuns} height={300} width={"100%"} inputname={"Child Org App Runs"} border={false} />
 		}
 
-		{subflowRuns === undefined ? 
+		{workflowRuns === undefined || currentTab === 0? 
 			null
 			: 
-			<LineChartWrapper keys={subflowRuns} height={300} width={"100%"} inputname={"Subflow Runs"}/>
+			<LineChartWrapper keys={workflowRuns} height={300} width={"100%"} inputname={"Daily Workflow Runs (including subflows)"} border={false} />
+		}
+
+		{subflowRuns === undefined || currentTab === 0 ? 
+			null
+			: 
+			<LineChartWrapper keys={subflowRuns} height={300} width={"100%"} inputname={"Subflow Runs"} border={false} />
 		}
 
 		{/*appRunCosts === undefined ? 
@@ -778,61 +968,63 @@ const AppStats = (defaultprops) => {
 			<LineChartWrapper keys={appRunCosts} height={300} width={"100%"} inputname={"Apprun cost - Cost per day"}/>
 		*/}
 
+		{syncStats === true || currentTab === 0 ? null : 
+			<div style={{height: 150+resultRows.length * 25, padding: "10px 0px 10px 0px", }}>
+				{resultLoading ? 
+					<div style={{margin: "auto", alignItems: "center", width: 350, height: "100%", }}>
+						<Typography variant="body2" color="textSecondary" component="p" style={{textAlign: "center", marginTop: 50, marginBottom: 15, }}>
+							Loading usage for selected period (may take a while) 
+						
+							<CircularProgress style={{marginTop: 15, }} /> 
+						</Typography>
+					</div>
+					:
+					<DataGrid
+						rows={resultRows}
+						columns={columns}
+						pageSize={100}
+						rowsPerPageOptions={[10, 20, 50, 100]}
+						checkboxSelection
+						disableSelectionOnClick
+						onPageSizeChange={(newPageSize) => {
+							//setRowsPerPage(newPageSize)
+							//submitSearch(workflowId, status, startTime, endTime, rowCursor, newPageSize) 
+						}}
+						// event for when clicking next page
+						// Hide page changer
+						onPageChange={(params) => {
+							console.log("page params: ", params)
+						}}
+						onSelectionModelChange={(newSelection) => {
+							console.log("newSelection: ", newSelection)
+							//console.log("newSelection: ", newSelection)
+							//setSelectedWorkflowExecutionsIndexes(newSelection)
+							//var found = []	
+							//for (var i = 0; i < newSelection.length; i++) {
+							//	// Find the workflow in the resultRows
+							//	var selected = resultRows.find((workflow) => {
+							//		return workflow.id === newSelection[i]
+							//	})
 
-		<div style={{height: 150+resultRows.length * 25, padding: "10px 0px 10px 0px", }}>
-			{resultLoading ? 
-				<div style={{margin: "auto", alignItems: "center", width: 350, height: "100%", }}>
-					<Typography variant="body2" color="textSecondary" component="p" style={{textAlign: "center", marginTop: 50, marginBottom: 15, }}>
-						Loading usage for selected period (may take a while) 
-					</Typography>
-					<CircularProgress style={{}} /> 
-				</div>
-				:
-				<DataGrid
-					rows={resultRows}
-					columns={columns}
-					pageSize={100}
-					rowsPerPageOptions={[10, 20, 50, 100]}
-					checkboxSelection
-					disableSelectionOnClick
-					onPageSizeChange={(newPageSize) => {
-						//setRowsPerPage(newPageSize)
-						//submitSearch(workflowId, status, startTime, endTime, rowCursor, newPageSize) 
-					}}
-					// event for when clicking next page
-					// Hide page changer
-					onPageChange={(params) => {
-						console.log("page params: ", params)
-					}}
-					onSelectionModelChange={(newSelection) => {
-						console.log("newSelection: ", newSelection)
-						//console.log("newSelection: ", newSelection)
-						//setSelectedWorkflowExecutionsIndexes(newSelection)
-						//var found = []	
-						//for (var i = 0; i < newSelection.length; i++) {
-						//	// Find the workflow in the resultRows
-						//	var selected = resultRows.find((workflow) => {
-						//		return workflow.id === newSelection[i]
-						//	})
+							//	if (selected === undefined || selected === null) {
+							//		continue
+							//	}
 
-						//	if (selected === undefined || selected === null) {
-						//		continue
-						//	}
+							//	found.push(selected)
+							//}
 
-						//	found.push(selected)
-						//}
-
-						//setSelectedWorkflowExecutions(found)
-					}}
-					// Track which items are selected
-				  />
-			}
-		  </div>
+							//setSelectedWorkflowExecutions(found)
+						}}
+						// Track which items are selected
+					  />
+				}
+			  </div>
+		}
     </div>
   )
 
   const dataWrapper = (
-    <div style={{ maxWidth: 1366, margin: "auto" }}>{data}</div>
+    <div style={{ maxWidth: 1366, margin: "auto", }}>{data}</div>
   );
 
   return dataWrapper;

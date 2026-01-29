@@ -39,7 +39,7 @@ services:
 
   app:
     container_name: iriswebapp_app
-    command: ['nohup', './iris-entrypoint.sh', 'iriswebapp']
+    command: ["nohup", "./iris-entrypoint.sh", "iriswebapp"]
     volumes:
       - ./certificates/rootCA/irisRootCACert.pem:/etc/irisRootCACert.pem:ro
       - ./certificates/:/home/iris/certificates/:ro
@@ -54,6 +54,7 @@ services:
     env_file:
       - .env
     environment:
+      - LOG_LEVEL
       - POSTGRES_USER
       - POSTGRES_PASSWORD
       - POSTGRES_ADMIN_USER
@@ -65,12 +66,17 @@ services:
     networks:
       - iris_backend
       - iris_frontend
-      - shared-network
 
   worker:
     container_name: iriswebapp_worker
     restart: always
-    command: ['./wait-for-iriswebapp.sh', 'app:8000', './iris-entrypoint.sh', 'iris-worker']
+    command:
+      [
+        "./wait-for-iriswebapp.sh",
+        "app:8000",
+        "./iris-entrypoint.sh",
+        "iris-worker",
+      ]
     volumes:
       - ./certificates/rootCA/irisRootCACert.pem:/etc/irisRootCACert.pem:ro
       - ./certificates/:/home/iris/certificates/:ro
@@ -94,15 +100,17 @@ services:
       - IRIS_SECRET_KEY
       - IRIS_SECURITY_PASSWORD_SALT
       - IRIS_WORKER
+      - LOG_LEVEL
     networks:
       - iris_backend
-      - shared-network
 
   nginx:
     container_name: iriswebapp_nginx
     environment:
       - IRIS_UPSTREAM_SERVER
       - IRIS_UPSTREAM_PORT
+      - IRIS_FRONTEND_SERVER
+      - IRIS_FRONTEND_PORT
       - INTERFACE_HTTPS_PORT
       - SERVER_NAME
       - CERT_FILENAME
@@ -110,7 +118,6 @@ services:
       - IRIS_AUTHENTICATION_TYPE
     networks:
       - iris_frontend
-      - shared-network
     ports:
       - "${INTERFACE_HTTPS_PORT:-8443}:${INTERFACE_HTTPS_PORT:-8443}"
     volumes:
@@ -130,5 +137,3 @@ networks:
     name: iris_backend
   iris_frontend:
     name: iris_frontend
-  shared-network:
-    external: true
