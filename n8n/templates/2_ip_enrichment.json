@@ -1,0 +1,125 @@
+{
+  "name": "2. IP Reputation Enrichment",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wazuh-alert",
+        "options": {}
+      },
+      "name": "Wazuh Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "wazuh-soc-webhook"
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "search",
+        "searchBy": "attribute",
+        "attributeType": "ip-src,ip-dst",
+        "attributeValue": "={{$json['body']['data']['srcip']}}"
+      },
+      "name": "MISP Enrich",
+      "type": "n8n-nodes-base.misp",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "ip",
+        "operation": "report",
+        "ip": "={{$json['body']['data']['srcip']}}"
+      },
+      "name": "VirusTotal",
+      "type": "n8n-nodes-base.virustotal",
+      "typeVersion": 1,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "={{$env['IRIS_BASE_URL']}}/api/cases/notes/add",
+        "options": {},
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "note_title",
+              "value": "Enrichment Data"
+            },
+            {
+              "name": "note_content",
+              "value": "=MISP Data: {{$node[\"MISP Enrich\"].json[\"Event\"]}}\nVT Data: {{$node[\"VirusTotal\"].json[\"data\"]}}"
+            }
+          ]
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env['IRIS_API_KEY']}}"
+            }
+          ]
+        }
+      },
+      "name": "IRIS Add Note",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        550
+      ]
+    }
+  ],
+  "connections": {
+    "Wazuh Webhook": {
+      "main": [
+        [
+          {
+            "node": "MISP Enrich",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MISP Enrich": {
+      "main": [
+        [
+          {
+            "node": "VirusTotal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VirusTotal": {
+      "main": [
+        [
+          {
+            "node": "IRIS Add Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "timezone": "Asia/Jakarta"
+  }
+}

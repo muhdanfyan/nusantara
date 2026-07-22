@@ -59,15 +59,15 @@
 
   <!-- Rules for Linux systems -->
   <rule id="100200" level="12">
-    <if_sid>550</if_sid>
-    <field name="file">/home/iris/tguard-v1.2/usecase/webdeface</field>
-    <description>Web defacement detected: file modified in web directory.</description>
+    <if_sid>550,554</if_sid>
+    <field name="file">usecase/webdeface</field>
+    <description>Web defacement or malicious file detected: file modified/added in web directory.</description>
   </rule>
 
   <rule id="100201" level="10">
-    <if_sid>550</if_sid>
+    <if_sid>550,554</if_sid>
     <match>\.html$</match>
-    <description>Web defacement suspected: HTML file modified.</description>
+    <description>Web defacement suspected: HTML file modified/added.</description>
     <group>web_defacement,fim,</group>
   </rule>  
 

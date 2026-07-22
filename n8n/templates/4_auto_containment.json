@@ -1,0 +1,154 @@
+{
+  "name": "4. High Severity Auto Containment",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wazuh-alert",
+        "options": {}
+      },
+      "name": "Wazuh Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "wazuh-soc-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json['body']['rule']['level']}}",
+              "operation": "largerEqual",
+              "value2": 10
+            }
+          ]
+        }
+      },
+      "name": "Is High Severity?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "={{$env['IRIS_BASE_URL']}}/api/cases/add",
+        "options": {},
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "case_name",
+              "value": "=Wazuh Alert: {{$json['body']['rule']['description']}}"
+            },
+            {
+              "name": "case_description",
+              "value": "=Alert ID: {{$json['body']['id']}}\nSeverity: {{$json['body']['rule']['level']}}\nIP: {{$json['body']['data']['srcip']}}"
+            }
+          ]
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env['IRIS_API_KEY']}}"
+            }
+          ]
+        }
+      },
+      "name": "IRIS Create Case",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        900,
+        550
+      ]
+    },
+    {
+      "parameters": {
+        "requestMethod": "PUT",
+        "url": "={{$env['WAZUH_URL']}}/active-response",
+        "options": {},
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "command",
+              "value": "firewall-drop"
+            },
+            {
+              "name": "arguments",
+              "value": "={{$json['body']['data']['srcip']}}"
+            }
+          ]
+        }
+      },
+      "name": "Wazuh AR Isolate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "=High Severity Alert: {{$json['body']['rule']['description']}}"
+      },
+      "name": "Telegram Notification",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        900,
+        700
+      ]
+    }
+  ],
+  "connections": {
+    "Wazuh Webhook": {
+      "main": [
+        [
+          {
+            "node": "Is High Severity?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is High Severity?": {
+      "main": [
+        [
+          {
+            "node": "IRIS Create Case",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Wazuh AR Isolate",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "timezone": "Asia/Jakarta"
+  }
+}

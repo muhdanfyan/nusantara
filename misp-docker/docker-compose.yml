@@ -72,10 +72,10 @@ services:
       - SYS_NICE # CAP_SYS_NICE Prevent runaway mysql log
     healthcheck:
       test: mysqladmin --user=$$MYSQL_USER --password=$$MYSQL_PASSWORD status
-      interval: 2s
-      timeout: 1s
-      retries: 3
-      start_period: 30s
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 300s
       start_interval: 5s
 
   misp-core:
@@ -109,13 +109,13 @@ services:
       db:
         condition: service_healthy
       misp-modules:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
-      test: curl -ks ${BASE_URL:-https://localhost}/users/heartbeat > /dev/null || exit 1
-      interval: 2s
-      timeout: 1s
-      retries: 3
-      start_period: 30s
+      test: curl -kfs https://localhost/users/heartbeat > /dev/null || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
       start_interval: 30s
     ports:
       - "${CORE_HTTP_PORT:-80}:80"
@@ -314,11 +314,11 @@ services:
         - MODULES_COMMIT=${MODULES_COMMIT}
         - MODULES_FLAVOR=${MODULES_FLAVOR:-standard}
     healthcheck:
-      test: "/bin/bash -c '</dev/tcp/localhost/6666'"
-      interval: 2s
-      timeout: 1s
-      retries: 3
-      start_period: 5s
+      test: "/bin/bash -c '</dev/tcp/127.0.0.1/6666'"
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 300s
       start_interval: 5s
     volumes:
       # custom MISP modules are loaded at startup time

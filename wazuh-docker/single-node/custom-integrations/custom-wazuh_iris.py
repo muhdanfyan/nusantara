@@ -79,7 +79,7 @@ def main():
         "alert_description": alert_details,
         "alert_source": "Wazuh",
         "alert_source_ref": alert_json.get("id", "Unknown ID"),
-        "alert_source_link": "https://118.98.236.158/app/wz-home",  
+        "alert_source_link": "https://WAZUH_DASHBOARD_URL/app/wz-home",  
         "alert_severity_id": severity,
         "alert_status_id": 2,  # 'New' status
         "alert_source_event_time": alert_json.get("timestamp", "Unknown Timestamp"),

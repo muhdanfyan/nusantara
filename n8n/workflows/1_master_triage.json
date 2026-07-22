@@ -1,0 +1,143 @@
+{
+  "name": "1. Master Triage",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "triage",
+        "options": {}
+      },
+      "name": "Wazuh Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "tguard-webhook-triage"
+    },
+    {
+      "parameters": {
+        "jsCode": "let ip = 'unknown';\nif (item.body && item.body.data && item.body.data.srcip) {\n  ip = item.body.data.srcip;\n}\nreturn { json: { alert_id: item.body.id || 'N/A', ip: ip, desc: item.body.rule?.description || 'N/A' } };"
+      },
+      "name": "Extract IOC",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "http://n8n:5678/webhook/enrichment",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "ip",
+              "value": "={{$json.ip}}"
+            },
+            {
+              "name": "alert_id",
+              "value": "={{$json.alert_id}}"
+            }
+          ]
+        }
+      },
+      "name": "Trigger Enrichment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        650,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "http://n8n:5678/webhook/iris-case",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "ip",
+              "value": "={{$json.ip}}"
+            },
+            {
+              "name": "desc",
+              "value": "={{$json.desc}}"
+            }
+          ]
+        }
+      },
+      "name": "Trigger IRIS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "http://n8n:5678/webhook/notify",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "message",
+              "value": "New Wazuh Alert! IP: {{$json.ip}} - {{$json.desc}}"
+            }
+          ]
+        }
+      },
+      "name": "Trigger Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        650,
+        450
+      ]
+    }
+  ],
+  "connections": {
+    "Wazuh Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract IOC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract IOC": {
+      "main": [
+        [
+          {
+            "node": "Trigger Enrichment",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trigger IRIS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trigger Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

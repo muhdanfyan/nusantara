@@ -1,0 +1,145 @@
+{
+  "name": "1. Anti Duplicate Case Creation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wazuh-alert",
+        "options": {}
+      },
+      "name": "Wazuh Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "wazuh-soc-webhook"
+    },
+    {
+      "parameters": {
+        "requestMethod": "GET",
+        "url": "={{$env['IRIS_BASE_URL']}}/api/cases",
+        "options": {},
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "cid",
+              "value": "={{$json['body']['data']['id']}}"
+            }
+          ]
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env['IRIS_API_KEY']}}"
+            }
+          ]
+        }
+      },
+      "name": "IRIS Check Duplicate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        500,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json['data'] && $json['data'].length > 0}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Is Duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        700,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "={{$env['IRIS_BASE_URL']}}/api/cases/add",
+        "options": {},
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "case_name",
+              "value": "=Wazuh Alert: {{$json['body']['rule']['description']}}"
+            },
+            {
+              "name": "case_description",
+              "value": "=Alert ID: {{$json['body']['id']}}\nSeverity: {{$json['body']['rule']['level']}}\nIP: {{$json['body']['data']['srcip']}}"
+            }
+          ]
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env['IRIS_API_KEY']}}"
+            }
+          ]
+        }
+      },
+      "name": "IRIS Create Case",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        900,
+        550
+      ]
+    }
+  ],
+  "connections": {
+    "Wazuh Webhook": {
+      "main": [
+        [
+          {
+            "node": "IRIS Check Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IRIS Check Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Is Duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Duplicate?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "IRIS Create Case",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "timezone": "Asia/Jakarta"
+  }
+}

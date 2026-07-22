@@ -1,0 +1,132 @@
+{
+  "name": "2. IP Enrichment (Anti-Dupe)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "enrichment",
+        "options": {}
+      },
+      "name": "Enrichment Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "tguard-webhook-enrichment"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ip = item.body.ip || 'unknown';\n// Simulate Cache Anti-Duplikat Check\nlet is_scanned = false;\n// Di n8n produksi, ini bisa query Redis atau static data\nreturn { json: { ip: ip, should_enrich: !is_scanned } };"
+      },
+      "name": "Check Duplicate IP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.should_enrich}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "IF Not Scanned",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.abuseipdb.com/api/v2/check",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "ipAddress",
+              "value": "={{$json.ip}}"
+            },
+            {
+              "name": "maxAgeInDays",
+              "value": "90"
+            }
+          ]
+        }
+      },
+      "name": "AbuseIPDB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        850,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://www.virustotal.com/api/v3/ip_addresses/{{$json.ip}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "name": "VirusTotal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        850,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Enrichment Webhook": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate IP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate IP": {
+      "main": [
+        [
+          {
+            "node": "IF Not Scanned",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Not Scanned": {
+      "main": [
+        [
+          {
+            "node": "AbuseIPDB",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "VirusTotal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

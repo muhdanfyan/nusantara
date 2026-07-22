@@ -30,8 +30,8 @@ alert_file = open(sys.argv[1])
 alert = json.loads(alert_file.read())
 alert_file.close()
 alert_output = {}
-misp_base_url = "https://118.98.236.158:1443/attributes/restSearch/"
-misp_api_auth_key = "7XCCyLkYqZWdnsM40RVGsO0wcTrK8qzdRfcGSVXu"
+misp_base_url = "https://MISP_IP:1443/attributes/restSearch/"
+misp_api_auth_key = "MISP_API_KEY_PLACEHOLDER"
 misp_apicall_headers = {"Content-Type":"application/json", "Authorization":f"{misp_api_auth_key}", "Accept":"application/json"}
 
 # --- End input gathering ---

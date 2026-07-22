@@ -1,0 +1,53 @@
+volumes:
+  n8n_data:
+    driver: local
+
+networks:
+  tguard_net:
+    driver: bridge
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: tguard-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # ── Core Settings ────────────────────────────────────────
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://${TGUARD_HOST_IP:-localhost}:5678
+      - N8N_SECURE_COOKIE=false
+
+      # ── Security ─────────────────────────────────────────────
+      # Uncomment & set these untuk keamanan production:
+      # - N8N_BASIC_AUTH_ACTIVE=true
+      # - N8N_BASIC_AUTH_USER=admin
+      # - N8N_BASIC_AUTH_PASSWORD=changeme
+
+      # ── Performance ──────────────────────────────────────────
+      - N8N_RUNNERS_ENABLED=true
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=168        # simpan 7 hari
+      - N8N_EXECUTIONS_PROCESS=main
+      - NODE_OPTIONS=--max-old-space-size=${TGUARD_N8N_MAX_OLD_SPACE_MB:-512}
+
+      # ── Timezone ─────────────────────────────────────────────
+      - GENERIC_TIMEZONE=Asia/Jakarta
+      - TZ=Asia/Jakarta
+
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./templates:/home/node/.n8n/templates:ro
+
+    networks:
+      - tguard_net
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s

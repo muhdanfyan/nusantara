@@ -1,0 +1,28 @@
+{
+  "name": "T-Guard Integration Smoke Test",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tguard-smoke",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Wazuh Smoke Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "tguard-smoke"
+    }
+  ],
+  "connections": {},
+  "active": false,
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "timezone": "Asia/Jakarta"
+  }
+}

@@ -15,7 +15,8 @@ const server = http.createServer((req, res) => {
 });
 
 const port = 3000;
-const IP = '(your_vm_ip)';
-server.listen(port, () => {
+// IP injected at runtime via environment variable or fallback to 0.0.0.0
+const IP = process.env.SERVER_IP || '0.0.0.0';
+server.listen(port, '0.0.0.0', () => {
   console.log(`Server running at http://${IP}:${port}/`);
 });
